@@ -1,0 +1,35 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec)
+#
+# Kullanim: Render Dashboard -> New -> Blueprint -> bu repoyu sec.
+# `sync: false` isaretli degiskenler dashboard'da elle girilir
+# (degerler kokteki .env dosyasindan kopyalanir; repoya asla girmez).
+#
+# Bolge: Supabase projesi ap-southeast-1'de oldugundan singapore secildi.
+# Free plan 15 dk islemsizlikte uyur (ilk istek ~30-60 sn); gercek
+# kullanima gecerken plan: starter yapin.
+
+services:
+  - type: web
+    name: hyrox-coach-api
+    runtime: docker
+    plan: free
+    region: singapore
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DB_USE_TRANSACTION_POOLER
+        value: "false"
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: REVENUECAT_WEBHOOK_SECRET
+        sync: false
