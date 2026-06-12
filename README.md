@@ -82,6 +82,7 @@ Interaktif dokumantasyon: `http://localhost:8000/docs`
 | `GET /templates` | Kullanicinin sablonlari (en yeni once) |
 | `PUT /templates/{id}` | Sablonu guncelle (tam degisim) |
 | `DELETE /templates/{id}` | Sablonu sil (plan girisleri CASCADE) |
+| `POST /plan/generate` | AI Onboarding Wizard: profil + katalogdan kisisellestirilmis haftalik program (tier limitli: free 1 toplam, premium 3/hafta, pro 5/gun) |
 | `GET /plan/week?start=` | Haftalik plan (start verilmezse bu haftanin pazartesisi) |
 | `POST /plan/entries` | Sablonu bir gune ata (`position` ile ayni gun AM/PM) |
 | `POST /plan/entries/{id}/complete` | Tamamlandi isaretle (`DELETE` ile geri al) |

@@ -24,6 +24,25 @@ class PlanNotFoundError(Exception):
     """Sablon veya plan girisi bulunamadi (ya da kullaniciya ait degil)."""
 
 
+async def fetch_exercise_catalog(db: AsyncSession) -> list[dict]:
+    """AI plan uretimi icin kompakt egzersiz katalogu (id/name/category/cns)."""
+    result = await db.execute(
+        text(
+            "SELECT exercise_id, name, category, cns_load_factor "
+            "FROM exercises ORDER BY category, exercise_id"
+        )
+    )
+    return [
+        {
+            "id": row.exercise_id,
+            "name": row.name,
+            "category": row.category,
+            "cns": float(row.cns_load_factor),
+        }
+        for row in result
+    ]
+
+
 def _row_to_template(row) -> WorkoutTemplateOut:
     exercises = row.exercises
     if isinstance(exercises, str):

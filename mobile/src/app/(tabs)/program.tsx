@@ -4,6 +4,7 @@
  */
 
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -138,14 +139,24 @@ export default function ProgramScreen() {
     >
       <View style={styles.titleRow}>
         <Text style={styles.screenTitle}>Program</Text>
-        <Pressable
-          onPress={() => setLibraryVisible(true)}
-          style={styles.libraryButton}
-          accessibilityLabel="Idman kutuphanesi"
-        >
-          <Ionicons name="barbell-outline" size={16} color={color.text.primary} />
-          <Text style={styles.libraryButtonText}>Idmanlarim</Text>
-        </Pressable>
+        <View style={styles.titleActions}>
+          <Pressable
+            onPress={() => router.push("/onboarding")}
+            style={styles.aiButton}
+            accessibilityLabel="AI ile plan olustur"
+          >
+            <Ionicons name="sparkles" size={15} color={color.accent.ink} />
+            <Text style={styles.aiButtonText}>AI Plan</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setLibraryVisible(true)}
+            style={styles.libraryButton}
+            accessibilityLabel="Idman kutuphanesi"
+          >
+            <Ionicons name="barbell-outline" size={16} color={color.text.primary} />
+            <Text style={styles.libraryButtonText}>Idmanlarim</Text>
+          </Pressable>
+        </View>
       </View>
 
       {/* Hafta gezinme */}
@@ -343,6 +354,25 @@ const styles = StyleSheet.create({
   screenTitle: {
     ...type.heading1,
     color: color.text.primary,
+  },
+  titleActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+  },
+  aiButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.xs + 2,
+    backgroundColor: color.accent.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+  },
+  aiButtonText: {
+    ...type.small,
+    fontFamily: "Manrope_600SemiBold",
+    color: color.accent.ink,
   },
   libraryButton: {
     flexDirection: "row",

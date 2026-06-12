@@ -27,20 +27,47 @@ from app.schemas.user import UserProfile
 PREMIUM_WEEKLY_LIMIT: int = 1
 PRO_DAILY_LIMIT: int = 5
 
+ANALYSIS_ENDPOINT = "/api/v1/analysis/weekly"
+PLAN_GENERATE_ENDPOINT = "/api/v1/plan/generate"
+
 # Tier -> (limit, SQL pencere kosulu)
 _TIER_WINDOWS: dict[str, tuple[int, str]] = {
     "premium": (PREMIUM_WEEKLY_LIMIT, "requested_at >= now() - interval '7 days'"),
     "pro": (PRO_DAILY_LIMIT, "requested_at >= date_trunc('day', now())"),
 }
 
+# Onboarding plan uretimi: her tier kullanabilir ama limitler farklidir.
+# free: 1 (omur boyu — onboarding tek seferlik deneyim), premium: 3/hafta, pro: 5/gun.
+_PLAN_TIER_WINDOWS: dict[str, tuple[int, str | None, str]] = {
+    "free": (1, None, "toplam"),
+    "premium": (3, "requested_at >= now() - interval '7 days'", "haftalik"),
+    "pro": (5, "requested_at >= date_trunc('day', now())", "gunluk"),
+}
+
+
+async def _count_usage(
+    db: AsyncSession, user_id: str, endpoint: str, window_condition: str | None
+) -> int:
+    """Belirli ucun (pencere icindeki) kullanim sayisi."""
+    window_sql = f" AND {window_condition}" if window_condition else ""
+    result = await db.execute(
+        text(
+            "SELECT count(*) FROM ai_usage_logs "
+            f"WHERE user_id = :user_id AND endpoint_called = :endpoint{window_sql}"
+        ),
+        {"user_id": user_id, "endpoint": endpoint},
+    )
+    return result.scalar_one()
+
 
 async def enforce_ai_rate_limit(
     current_user: UserProfile = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ) -> UserProfile:
-    """FastAPI dependency: JWT'den cozulen tier ile AI kullanim limiti kontrolu.
+    """FastAPI dependency: JWT'den cozulen tier ile AI analiz limiti kontrolu.
 
     Kontrolden gecen istegin dogrulanmis kullanici profilini doner.
+    Sayim ucun kendi kayitlariyla sinirlidir; plan uretimi kotayi etkilemez.
     """
     if current_user.tier == "free":
         raise HTTPException(
@@ -49,14 +76,9 @@ async def enforce_ai_rate_limit(
         )
 
     limit, window_condition = _TIER_WINDOWS[current_user.tier]
-    result = await db.execute(
-        text(
-            "SELECT count(*) FROM ai_usage_logs "
-            f"WHERE user_id = :user_id AND {window_condition}"
-        ),
-        {"user_id": current_user.user_id},
+    used = await _count_usage(
+        db, current_user.user_id, ANALYSIS_ENDPOINT, window_condition
     )
-    used = result.scalar_one()
 
     if used >= limit:
         period = "haftalik" if current_user.tier == "premium" else "gunluk"
@@ -67,6 +89,36 @@ async def enforce_ai_rate_limit(
                 f"({limit}) doldu. Limit, pencere sonunda sifirlanir."
             ),
         )
+
+    return current_user
+
+
+async def enforce_plan_generation_limit(
+    current_user: UserProfile = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> UserProfile:
+    """FastAPI dependency: AI plan uretimi (onboarding) tier limiti.
+
+    Free kullanici da 1 kez deneyebilir (onboarding tum kullanicilarin ilk
+    deneyimi); sonraki uretimler Premium/Pro gerektirir.
+    """
+    limit, window_condition, period = _PLAN_TIER_WINDOWS[current_user.tier]
+    used = await _count_usage(
+        db, current_user.user_id, PLAN_GENERATE_ENDPOINT, window_condition
+    )
+
+    if used >= limit:
+        if current_user.tier == "free":
+            detail = (
+                "Ucretsiz plan olusturma hakkini kullandin. Yeni planlar icin "
+                "Premium veya Pro'ya yukselt."
+            )
+        else:
+            detail = (
+                f"{current_user.tier.capitalize()} paketin {period} plan olusturma "
+                f"limiti ({limit}) doldu. Limit, pencere sonunda sifirlanir."
+            )
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, detail=detail)
 
     return current_user
 

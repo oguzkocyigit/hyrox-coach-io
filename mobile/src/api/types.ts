@@ -265,6 +265,45 @@ export interface WeekPlanResponse {
 }
 
 // ---------------------------------------------------------------
+// AI Onboarding Wizard (POST /plan/generate)
+// ---------------------------------------------------------------
+export type TrainingGoal = "strength" | "conditioning" | "hybrid";
+export type Zone2Habit = "none" | "sometimes" | "regular";
+export type SledExperience = "none" | "some" | "confident";
+export type OlympicProficiency = "none" | "learning" | "proficient";
+export type NutritionConstraint =
+  | "none"
+  | "omad"
+  | "intermittent_fasting"
+  | "low_carb";
+export type EquipmentLevel = "full_box" | "standard_gym" | "minimal";
+
+export interface OnboardingPayload {
+  goal: TrainingGoal;
+  days_per_week: number; // 2-7
+  five_k_pace_seconds_per_km?: number | null;
+  zone2_habit: Zone2Habit;
+  sled_experience: SledExperience;
+  olympic_proficiency: OlympicProficiency;
+  /** Agir kondisyon gunleri hafta sonuna alinsin mi */
+  weekend_conditioning: boolean;
+  nutrition_constraint: NutritionConstraint;
+  equipment: EquipmentLevel;
+}
+
+export interface GeneratedDay {
+  /** 0 = Pazartesi ... 6 = Pazar */
+  day_of_week: number;
+  focus: string;
+  template: WorkoutTemplateCreate;
+}
+
+export interface GeneratedWeekPlan {
+  coach_summary: string;
+  days: GeneratedDay[];
+}
+
+// ---------------------------------------------------------------
 // Wearable senkron (POST /sync/health)
 // ---------------------------------------------------------------
 export interface HealthCardioSample {

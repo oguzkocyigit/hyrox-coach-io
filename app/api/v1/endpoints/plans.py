@@ -4,10 +4,12 @@ from datetime import date
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db_session
 from app.core.security import get_current_user
+from app.schemas.onboarding import GeneratedWeekPlan, OnboardingPayload
 from app.schemas.plans import (
     PlanEntryCreate,
     PlanEntryOut,
@@ -17,7 +19,16 @@ from app.schemas.plans import (
 )
 from app.schemas.user import UserProfile
 from app.services import plans as plan_service
+from app.services.ai_coach import (
+    AIServiceNotConfiguredError,
+    generate_onboarding_plan,
+)
 from app.services.plans import PlanNotFoundError
+from app.services.rate_limit import (
+    PLAN_GENERATE_ENDPOINT,
+    enforce_plan_generation_limit,
+    record_ai_usage,
+)
 
 router = APIRouter(tags=["plans"])
 
@@ -86,6 +97,50 @@ async def delete_template(
         await plan_service.delete_template(db, current_user.user_id, template_id)
     except PlanNotFoundError:
         raise _NOT_FOUND
+
+
+# ---------------------------------------------------------------
+# AI Onboarding Wizard: kisisellestirilmis haftalik plan uretimi
+# ---------------------------------------------------------------
+@router.post(
+    "/plan/generate",
+    response_model=GeneratedWeekPlan,
+    summary="AI ile kisisellestirilmis haftalik program uret (tier limitli)",
+)
+async def generate_plan(
+    payload: OnboardingPayload,
+    current_user: UserProfile = Depends(enforce_plan_generation_limit),
+    db: AsyncSession = Depends(get_db_session),
+) -> GeneratedWeekPlan:
+    """Onboarding cevaplarini Gemini'ye besler, haftalik program doner.
+
+    - Egzersiz katalogu (exercise_id + CNS faktorleri) prompt'a verilir;
+      AI yalnizca mevcut kimlikleri secer, hicbir metrik hesaplamaz.
+    - AI'in dondurdugu bilinmeyen exercise_id'ler null'a cevrilir (isim kalir).
+    - Kota yalnizca BASARILI uretimden sonra tuketilir.
+    - Plan istemcide onizlenir; kullanici onaylarsa mevcut /templates +
+      /plan/entries uclariyla kaydedilir (bu uc DB'ye yazmaz).
+    """
+    catalog = await plan_service.fetch_exercise_catalog(db)
+
+    try:
+        plan = await generate_onboarding_plan(payload, catalog)
+    except AIServiceNotConfiguredError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail="AI gecerli bir plan uretemedi. Lutfen tekrar dene.",
+        ) from exc
+
+    valid_ids = {item["id"] for item in catalog}
+    for day in plan.days:
+        for exercise in day.template.exercises:
+            if exercise.exercise_id and exercise.exercise_id not in valid_ids:
+                exercise.exercise_id = None
+
+    await record_ai_usage(db, current_user.user_id, PLAN_GENERATE_ENDPOINT)
+    return plan
 
 
 # ---------------------------------------------------------------

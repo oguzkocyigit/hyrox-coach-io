@@ -9,6 +9,7 @@
  */
 
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 
 import { api } from "@/api/client";
@@ -38,9 +39,12 @@ type HealthKitModule = typeof import("@kingstinct/react-native-healthkit");
 
 let cachedModule: HealthKitModule | null | undefined;
 
+/** Expo Go'da native modul yoktur; require bile denenmemeli. */
+const isExpoGo = Constants.appOwnership === "expo";
+
 function getHealthKit(): HealthKitModule | null {
   if (cachedModule !== undefined) return cachedModule;
-  if (Platform.OS !== "ios") {
+  if (Platform.OS !== "ios" || isExpoGo) {
     cachedModule = null;
     return cachedModule;
   }

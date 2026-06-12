@@ -47,6 +47,7 @@ function RootNavigator() {
       <Stack.Protected guard={session !== null}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="paywall" options={{ presentation: "modal" }} />
+        <Stack.Screen name="onboarding" options={{ presentation: "modal" }} />
       </Stack.Protected>
       <Stack.Protected guard={session === null}>
         <Stack.Screen name="(auth)" />

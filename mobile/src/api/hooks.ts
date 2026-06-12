@@ -13,8 +13,10 @@ import {
 import { api } from "@/api/client";
 import type {
   Exercise,
+  GeneratedWeekPlan,
   HealthSyncRequest,
   HealthSyncResponse,
+  OnboardingPayload,
   PlanEntry,
   PlanEntryCreate,
   UserProfile,
@@ -203,6 +205,14 @@ export function useDeleteEntry() {
   return useMutation({
     mutationFn: (entryId: string) => api.delete(`/api/v1/plan/entries/${entryId}`),
     onSuccess: () => invalidatePlanData(queryClient),
+  });
+}
+
+/** AI Onboarding Wizard: kisisellestirilmis haftalik plan uretimi (tier limitli). */
+export function useGeneratePlan() {
+  return useMutation({
+    mutationFn: (payload: OnboardingPayload) =>
+      api.post<GeneratedWeekPlan>("/api/v1/plan/generate", payload),
   });
 }
 
