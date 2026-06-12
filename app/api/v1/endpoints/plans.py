@@ -9,7 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db_session
 from app.core.security import get_current_user
-from app.schemas.onboarding import GeneratedWeekPlan, OnboardingPayload
+from app.schemas.onboarding import (
+    DayWorkoutGeneratePayload,
+    GeneratedDayWorkout,
+    GeneratedWeekPlan,
+    ModifiedWorkoutResponse,
+    OnboardingPayload,
+    WorkoutModifyPayload,
+)
 from app.schemas.plans import (
     PlanEntryCreate,
     PlanEntryOut,
@@ -21,11 +28,15 @@ from app.schemas.user import UserProfile
 from app.services import plans as plan_service
 from app.services.ai_coach import (
     AIServiceNotConfiguredError,
+    generate_day_workout,
     generate_onboarding_plan,
+    modify_workout_with_ai,
 )
 from app.services.plans import PlanNotFoundError
 from app.services.rate_limit import (
+    PLAN_GENERATE_DAY_ENDPOINT,
     PLAN_GENERATE_ENDPOINT,
+    PLAN_MODIFY_ENDPOINT,
     enforce_plan_generation_limit,
     record_ai_usage,
 )
@@ -143,6 +154,78 @@ async def generate_plan(
 
     await record_ai_usage(db, current_user.user_id, PLAN_GENERATE_ENDPOINT)
     return plan
+
+
+def _sanitize_template_exercise_ids(
+    template: WorkoutTemplateCreate, valid_ids: set[str]
+) -> None:
+    for exercise in template.exercises:
+        if exercise.exercise_id and exercise.exercise_id not in valid_ids:
+            exercise.exercise_id = None
+
+
+@router.post(
+    "/plan/generate-day",
+    response_model=GeneratedDayWorkout,
+    summary="AI ile tek gunluk idman uret (tier limitli)",
+)
+async def generate_day_plan(
+    payload: DayWorkoutGeneratePayload,
+    current_user: UserProfile = Depends(enforce_plan_generation_limit),
+    db: AsyncSession = Depends(get_db_session),
+) -> GeneratedDayWorkout:
+    """Secilen gun icin tek seanslik idman uretir; sure deterministik zorlanir."""
+    catalog = await plan_service.fetch_exercise_catalog(db)
+
+    try:
+        result = await generate_day_workout(payload, catalog)
+    except AIServiceNotConfiguredError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail="AI gecerli bir idman uretemedi. Lutfen tekrar dene.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    valid_ids = {item["id"] for item in catalog}
+    _sanitize_template_exercise_ids(result.template, valid_ids)
+
+    await record_ai_usage(db, current_user.user_id, PLAN_GENERATE_DAY_ENDPOINT)
+    return result
+
+
+@router.post(
+    "/plan/modify-workout",
+    response_model=ModifiedWorkoutResponse,
+    summary="Mevcut idmani AI ile revize et (tier limitli)",
+)
+async def modify_workout(
+    payload: WorkoutModifyPayload,
+    current_user: UserProfile = Depends(enforce_plan_generation_limit),
+    db: AsyncSession = Depends(get_db_session),
+) -> ModifiedWorkoutResponse:
+    """Kullanicinin acikladigi nedene gore sablonu AI ile gunceller."""
+    catalog = await plan_service.fetch_exercise_catalog(db)
+
+    try:
+        result = await modify_workout_with_ai(payload, catalog)
+    except AIServiceNotConfiguredError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail="AI idmani revize edemedi. Lutfen tekrar dene.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    valid_ids = {item["id"] for item in catalog}
+    _sanitize_template_exercise_ids(result.template, valid_ids)
+
+    await record_ai_usage(db, current_user.user_id, PLAN_MODIFY_ENDPOINT)
+    return result
 
 
 # ---------------------------------------------------------------

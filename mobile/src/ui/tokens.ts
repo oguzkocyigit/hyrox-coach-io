@@ -1,5 +1,5 @@
 /**
- * EMBER tasarim sistemi tokenlari. Kaynak: DESIGN_SYSTEM.md
+ * VOLT tasarim sistemi tokenlari. Kaynak: DESIGN_SYSTEM.md
  * Bilesenler hex KULLANMAZ; her zaman bu nesneden okur.
  */
 
@@ -14,9 +14,9 @@ export const color = {
     strong: "#39444B",
   },
   accent: {
-    primary: "#FF5A1F",
-    pressed: "#E04A12",
-    subtle: "rgba(255, 90, 31, 0.12)",
+    primary: "#CEFF00",
+    pressed: "#B5E600",
+    subtle: "rgba(206, 255, 0, 0.12)",
     ink: "#0F1316",
   },
   text: {

@@ -1,6 +1,6 @@
 /**
  * Haftanin gunlerini coklu secim (0=Pazartesi ... 6=Pazar).
- * EMBER: secili gun turuncu dolgu, dokunma hedefi >= 44pt.
+ * VOLT: secili gun volt dolgu, dokunma hedefi >= 44pt.
  */
 
 import { Pressable, StyleSheet, Text, View } from "react-native";

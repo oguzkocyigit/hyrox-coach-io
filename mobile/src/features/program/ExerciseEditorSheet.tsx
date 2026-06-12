@@ -17,16 +17,22 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import type { Measurement, TemplateExercise } from "@/api/types";
+import type { Exercise, Measurement, TemplateExercise } from "@/api/types";
 import { MEASUREMENTS } from "@/features/program/constants";
 import { Button } from "@/ui/Button";
 import { TextField } from "@/ui/TextField";
-import { color, radius, space, type } from "@/ui/tokens";
+import { color, font, radius, space, type } from "@/ui/tokens";
+
+const RPE_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 
 type ExerciseEditorSheetProps = {
   visible: boolean;
   /** null: yeni egzersiz; dolu: duzenleme */
   initial: TemplateExercise | null;
+  /** Katalogdan secildiyse ad kilitli kalir ve exercise_id atanir */
+  catalogExercise?: Pick<Exercise, "exercise_id" | "name"> | null;
+  /** Ozel olusturmada arama metninden on doldurma */
+  namePrefill?: string;
   onClose: () => void;
   onSave: (exercise: TemplateExercise) => void;
 };
@@ -82,25 +88,42 @@ function parseNonNegativeFloat(value: string): number | null {
 export function ExerciseEditorSheet({
   visible,
   initial,
+  catalogExercise = null,
+  namePrefill = "",
   onClose,
   onSave,
 }: ExerciseEditorSheetProps) {
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
+  const [rpe, setRpe] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fromCatalog = catalogExercise != null && initial == null;
 
   useEffect(() => {
     if (visible) {
-      setDraft(initial ? toDraft(initial) : EMPTY_DRAFT);
+      if (initial) {
+        setDraft(toDraft(initial));
+        setRpe(initial.rpe ?? null);
+      } else if (catalogExercise) {
+        setDraft({ ...EMPTY_DRAFT, name: catalogExercise.name });
+        setRpe(null);
+      } else {
+        setDraft({ ...EMPTY_DRAFT, name: namePrefill.trim() });
+        setRpe(null);
+      }
       setError(null);
     }
-  }, [visible, initial]);
+  }, [visible, initial, catalogExercise, namePrefill]);
 
   const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
 
   const handleSave = () => {
-    const name = draft.name.trim();
+    const name = fromCatalog
+      ? catalogExercise!.name
+      : draft.name.trim();
     if (!name) return setError("Egzersiz adi gerekli.");
+
+    if (rpe == null) return setError("RPE sec (1-10).");
 
     const sets = parsePositiveInt(draft.sets);
     if (!sets) return setError("Set sayisi 1 veya daha buyuk olmali.");
@@ -109,10 +132,12 @@ export function ExerciseEditorSheet({
 
     const exercise: TemplateExercise = {
       name,
-      exercise_id: initial?.exercise_id ?? null,
+      exercise_id:
+        initial?.exercise_id ?? catalogExercise?.exercise_id ?? null,
       measurement: draft.measurement,
       sets,
       rest_seconds: Math.round(restSeconds),
+      rpe,
       reps: null,
       weight_kg: null,
       distance_m: null,
@@ -164,13 +189,33 @@ export function ExerciseEditorSheet({
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
           >
-            <TextField
-              label="Egzersiz Adi"
-              value={draft.name}
-              onChangeText={(name) => set({ name })}
-              placeholder="orn. Sled Push"
-              autoCapitalize="words"
-            />
+            {fromCatalog ? (
+              <View style={styles.catalogRow}>
+                <Text style={styles.sectionLabel}>Egzersiz</Text>
+                <View style={styles.catalogNameBox}>
+                  <Text style={styles.catalogName}>{catalogExercise!.name}</Text>
+                  <View style={styles.catalogBadge}>
+                    <Ionicons name="library-outline" size={14} color={color.accent.primary} />
+                    <Text style={styles.catalogBadgeText}>Katalog</Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <>
+                <TextField
+                  label="Egzersiz Adi"
+                  value={draft.name}
+                  onChangeText={(name) => set({ name })}
+                  placeholder="orn. Sled Push"
+                  autoCapitalize="words"
+                />
+                {!initial ? (
+                  <Text style={styles.customHint}>
+                    Ozel egzersiz — katalogda yoksa CNS hesabi yapilmaz.
+                  </Text>
+                ) : null}
+              </>
+            )}
 
             <View style={styles.section}>
               <Text style={styles.sectionLabel}>Olcum Tipi</Text>
@@ -238,11 +283,11 @@ export function ExerciseEditorSheet({
             <View style={styles.fieldRow}>
               <View style={styles.fieldHalf}>
                 <TextField
-                  label="Agirlik (kg) — opsiyonel"
+                  label="Agirlik (kg)"
                   value={draft.weightKg}
                   onChangeText={(weightKg) => set({ weightKg })}
                   keyboardType="decimal-pad"
-                  placeholder="0"
+                  placeholder="Opsiyonel"
                 />
               </View>
               <View style={styles.fieldHalf}>
@@ -253,6 +298,44 @@ export function ExerciseEditorSheet({
                   keyboardType="number-pad"
                 />
               </View>
+            </View>
+
+            <View style={styles.rpeSection}>
+              <View style={styles.rpeHeader}>
+                <Text style={styles.sectionLabel}>Hedef RPE</Text>
+                <Text
+                  style={[
+                    styles.rpeValue,
+                    rpe == null ? styles.rpeValueEmpty : styles.rpeValueSet,
+                  ]}
+                >
+                  {rpe ?? "—"}
+                </Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.rpeStrip}
+                keyboardShouldPersistTaps="handled"
+              >
+                {RPE_VALUES.map((value) => {
+                  const active = rpe === value;
+                  return (
+                    <Pressable
+                      key={value}
+                      onPress={() => setRpe(value)}
+                      style={[styles.rpeChip, active && styles.rpeChipActive]}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`RPE ${value}`}
+                    >
+                      <Text style={[styles.rpeChipText, active && styles.rpeChipTextActive]}>
+                        {value}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
 
             <TextField
@@ -268,11 +351,12 @@ export function ExerciseEditorSheet({
 
           <View style={[styles.footer, { paddingBottom: insets.bottom + space.md }]}>
             <View style={styles.footerButton}>
-              <Button label="Vazgec" variant="secondary" onPress={onClose} />
+              <Button label="Vazgec" variant="secondary" size="lg" onPress={onClose} />
             </View>
             <View style={styles.footerButton}>
               <Button
                 label={initial ? "Guncelle" : "Ekle"}
+                size="lg"
                 onPress={handleSave}
               />
             </View>
@@ -342,9 +426,93 @@ const styles = StyleSheet.create({
   fieldRow: {
     flexDirection: "row",
     gap: space.md,
+    alignItems: "flex-end",
   },
   fieldHalf: {
     flex: 1,
+    minWidth: 0,
+  },
+  catalogRow: {
+    gap: space.sm,
+  },
+  catalogNameBox: {
+    backgroundColor: color.bg.surface,
+    borderWidth: 1,
+    borderColor: color.accent.primary,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.lg,
+    paddingVertical: space.md,
+    gap: space.sm,
+  },
+  catalogName: {
+    ...type.bodyStrong,
+    fontSize: 16,
+    color: color.text.primary,
+  },
+  catalogBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.xs,
+  },
+  catalogBadgeText: {
+    ...type.small,
+    color: color.accent.primary,
+  },
+  customHint: {
+    ...type.small,
+    color: color.text.secondary,
+    marginTop: -space.sm,
+  },
+  rpeSection: {
+    gap: space.sm,
+    backgroundColor: color.bg.surface,
+    borderWidth: 1,
+    borderColor: color.stroke.subtle,
+    borderRadius: radius.md,
+    padding: space.md,
+  },
+  rpeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  rpeValue: {
+    fontFamily: font.display.semibold,
+    fontSize: 22,
+    lineHeight: 26,
+  },
+  rpeValueSet: {
+    color: color.accent.primary,
+  },
+  rpeValueEmpty: {
+    color: color.text.disabled,
+  },
+  rpeStrip: {
+    flexDirection: "row",
+    gap: space.xs,
+    paddingVertical: 2,
+  },
+  rpeChip: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: color.stroke.strong,
+    backgroundColor: color.bg.elevated,
+  },
+  rpeChipActive: {
+    backgroundColor: color.accent.primary,
+    borderColor: color.accent.primary,
+  },
+  rpeChipText: {
+    fontFamily: font.data.medium,
+    fontSize: 12,
+    color: color.text.secondary,
+  },
+  rpeChipTextActive: {
+    color: color.accent.ink,
   },
   error: {
     ...type.small,

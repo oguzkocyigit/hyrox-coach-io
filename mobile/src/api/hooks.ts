@@ -12,10 +12,13 @@ import {
 
 import { api } from "@/api/client";
 import type {
+  DayWorkoutGeneratePayload,
   Exercise,
+  GeneratedDayWorkout,
   GeneratedWeekPlan,
   HealthSyncRequest,
   HealthSyncResponse,
+  ModifiedWorkoutResponse,
   OnboardingPayload,
   PlanEntry,
   PlanEntryCreate,
@@ -27,6 +30,7 @@ import type {
   WorkoutCreate,
   WorkoutCreateResponse,
   WorkoutHistoryResponse,
+  WorkoutModifyPayload,
   WorkoutTemplate,
   WorkoutTemplateCreate,
 } from "@/api/types";
@@ -213,6 +217,22 @@ export function useGeneratePlan() {
   return useMutation({
     mutationFn: (payload: OnboardingPayload) =>
       api.post<GeneratedWeekPlan>("/api/v1/plan/generate", payload),
+  });
+}
+
+/** Tek gun icin AI idman uretimi (tier limitli). */
+export function useGenerateDayWorkout() {
+  return useMutation({
+    mutationFn: (payload: DayWorkoutGeneratePayload) =>
+      api.post<GeneratedDayWorkout>("/api/v1/plan/generate-day", payload),
+  });
+}
+
+/** Mevcut sablonu kullanici geri bildirimiyle AI ile revize et (tier limitli). */
+export function useModifyWorkout() {
+  return useMutation({
+    mutationFn: (payload: WorkoutModifyPayload) =>
+      api.post<ModifiedWorkoutResponse>("/api/v1/plan/modify-workout", payload),
   });
 }
 

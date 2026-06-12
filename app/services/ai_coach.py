@@ -17,10 +17,28 @@ from google.genai import types as genai_types
 from pydantic import ValidationError
 
 from app.core.config import get_settings
-from app.schemas.ai_plan import AiPlanResponse
+from app.schemas.ai_plan import (
+    AiModifyResponse,
+    AiPlanResponse,
+    AiSingleDayResponse,
+)
 from app.schemas.analysis import CoachAnalysis, WeeklyMetrics
-from app.schemas.onboarding import GeneratedWeekPlan, OnboardingPayload
-from app.services.plan_coercion import coerce_ai_plan, parse_ai_response
+from app.schemas.onboarding import (
+    DayWorkoutGeneratePayload,
+    GeneratedDayWorkout,
+    GeneratedWeekPlan,
+    ModifiedWorkoutResponse,
+    OnboardingPayload,
+    WorkoutModifyPayload,
+)
+from app.services.plan_coercion import (
+    coerce_ai_modify,
+    coerce_ai_plan,
+    coerce_ai_single_day,
+    parse_ai_modify,
+    parse_ai_response,
+    parse_ai_single_day,
+)
 
 # Blueprint'teki rol tanimi (sayfa sonu prompt spesifikasyonu)
 SYSTEM_INSTRUCTION = (
@@ -113,16 +131,70 @@ PLAN_SYSTEM_INSTRUCTION = (
     "Output: STRICT JSON matching the response schema. No extra commentary."
 )
 
+_DAY_NAMES = [
+    "Pazartesi",
+    "Sali",
+    "Carsamba",
+    "Persembe",
+    "Cuma",
+    "Cumartesi",
+    "Pazar",
+]
 
-async def generate_onboarding_plan(
-    payload: OnboardingPayload, catalog: list[dict]
-) -> GeneratedWeekPlan:
-    """Atlet profili + egzersiz katalogundan haftalik program uretir.
+DAY_PLAN_SYSTEM_INSTRUCTION = (
+    "Role: Elite hybrid training program designer (HYROX / CrossFit / strength).\n"
+    "Task: Build ONE training session for a SINGLE calendar day from the athlete "
+    "context and exercise catalog.\n"
+    "STRICT RULES:\n"
+    "1. exercise_id MUST be one of the catalog 'id' values. Unknown movements: "
+    "exercise_id null, clear name.\n"
+    "2. CNS recovery: avoid stacking multiple cns >= 1.8 in one session unless "
+    "session_kind is metcon and duration is short.\n"
+    "3. session_kind: 'gym' -> strength/metcon/power/technique focus; 'running' -> "
+    "running/endurance workout_type; 'hybrid' -> combine run + gym elements.\n"
+    "4. DURATION IS MANDATORY — Total work INCLUDING rest must reach "
+    "duration_minutes (±10%). Scale sets, rounds, distances and rest periods "
+    "upward for long sessions (60-90+ min). A 75-minute gym session needs "
+    "substantial volume (many sets/rounds), NOT a 30-minute metcon.\n"
+    "5. Measurement rules: reps needs reps; time needs duration_seconds; "
+    "distance needs distance_m.\n"
+    "6. template.workout_type: hybrid, running, strength, metcon, endurance, "
+    "power, technique, recovery. template.format: standard, circuit, emom, "
+    "amrap, for_time.\n"
+    "7. Equipment limits: standard_gym -> no sled/SkiErg/wall ball; minimal -> "
+    "bodyweight/dumbbell/running only.\n"
+    "8. Skill gating per olympic_proficiency and sled_experience.\n"
+    "9. Write focus (one sentence) and all instructions in TURKISH.\n"
+    "Output: STRICT JSON matching the response schema. No extra commentary."
+)
 
-    Katalog deterministik motorun kaynagidir (exercise_id + cns_load_factor);
-    AI yalnizca bu kimlikleri secip gunlere dagitir, hicbir metrik hesaplamaz.
-    Gecici hatalarda en fazla 3 deneme yapilir.
-    """
+MODIFY_WORKOUT_SYSTEM_INSTRUCTION = (
+    "Role: Elite hybrid training coach revising an existing workout template.\n"
+    "Task: Modify the provided workout based on the athlete's change_reason while "
+    "keeping safe, coherent structure.\n"
+    "STRICT RULES:\n"
+    "1. Preserve exercise_id values from the original when the movement stays; "
+    "catalog ids only for new movements.\n"
+    "2. Address change_reason directly in coach_note (1-2 sentences, Turkish).\n"
+    "3. If target_duration_minutes is set, total work INCLUDING rest must match "
+    "it (±10%). Scale volume accordingly.\n"
+    "4. Do not remove all exercises; produce a complete revised template.\n"
+    "5. Measurement and workout_type/format rules same as plan generation.\n"
+    "6. Write focus and instructions in TURKISH.\n"
+    "Output: STRICT JSON matching the response schema. No extra commentary."
+)
+
+
+async def _generate_structured(
+    *,
+    system_instruction: str,
+    contents: str,
+    response_schema: type,
+    parse_fn,
+    coerce_fn,
+    temperature: float = 0.55,
+    max_output_tokens: int = 4096,
+):
     settings = get_settings()
     if not settings.gemini_api_key:
         raise AIServiceNotConfiguredError(
@@ -136,27 +208,105 @@ async def generate_onboarding_plan(
         try:
             response = await client.aio.models.generate_content(
                 model=settings.gemini_model,
-                contents=(
-                    "Athlete profile:\n"
-                    + payload.model_dump_json(indent=2)
-                    + "\n\nExercise catalog (id / name / category / cns load factor):\n"
-                    + json.dumps(catalog, ensure_ascii=False)
-                ),
+                contents=contents,
                 config=genai_types.GenerateContentConfig(
-                    system_instruction=PLAN_SYSTEM_INSTRUCTION,
+                    system_instruction=system_instruction,
                     response_mime_type="application/json",
-                    response_schema=AiPlanResponse,
-                    temperature=0.55 + attempt * 0.05,
-                    max_output_tokens=8192,
+                    response_schema=response_schema,
+                    temperature=temperature + attempt * 0.05,
+                    max_output_tokens=max_output_tokens,
                 ),
             )
             if not response.text:
                 raise ValueError("Gemini bos yanit dondurdu.")
-            ai = parse_ai_response(response.text)
-            return coerce_ai_plan(ai)
+            parsed = parse_fn(response.text)
+            return coerce_fn(parsed)
         except (ValidationError, ValueError) as exc:
             last_error = exc
             continue
 
     assert last_error is not None
     raise last_error
+
+
+async def generate_onboarding_plan(
+    payload: OnboardingPayload, catalog: list[dict]
+) -> GeneratedWeekPlan:
+    """Atlet profili + egzersiz katalogundan haftalik program uretir.
+
+    Katalog deterministik motorun kaynagidir (exercise_id + cns_load_factor);
+    AI yalnizca bu kimlikleri secip gunlere dagitir, hicbir metrik hesaplamaz.
+    Gecici hatalarda en fazla 3 deneme yapilir.
+    """
+    return await _generate_structured(
+        system_instruction=PLAN_SYSTEM_INSTRUCTION,
+        contents=(
+            "Athlete profile:\n"
+            + payload.model_dump_json(indent=2)
+            + "\n\nExercise catalog (id / name / category / cns load factor):\n"
+            + json.dumps(catalog, ensure_ascii=False)
+        ),
+        response_schema=AiPlanResponse,
+        parse_fn=parse_ai_response,
+        coerce_fn=lambda ai: coerce_ai_plan(ai, payload),
+        max_output_tokens=8192,
+    )
+
+
+async def generate_day_workout(
+    payload: DayWorkoutGeneratePayload, catalog: list[dict]
+) -> GeneratedDayWorkout:
+    """Tek gun icin AI idman uretir; sure deterministik olarak zorlanir."""
+    day_name = _DAY_NAMES[payload.day_of_week]
+    athlete = payload.athlete_context.model_dump() if payload.athlete_context else {}
+    request = {
+        "day_of_week": payload.day_of_week,
+        "day_name": day_name,
+        "session_kind": payload.session_kind,
+        "duration_minutes": payload.duration_minutes,
+        "preferred_workout_type": payload.preferred_workout_type,
+        "athlete_context": athlete,
+    }
+    return await _generate_structured(
+        system_instruction=DAY_PLAN_SYSTEM_INSTRUCTION,
+        contents=(
+            "Single-day workout request:\n"
+            + json.dumps(request, ensure_ascii=False, indent=2)
+            + "\n\nExercise catalog (id / name / category / cns load factor):\n"
+            + json.dumps(catalog, ensure_ascii=False)
+        ),
+        response_schema=AiSingleDayResponse,
+        parse_fn=parse_ai_single_day,
+        coerce_fn=lambda ai: coerce_ai_single_day(
+            ai, target_minutes=payload.duration_minutes
+        ),
+    )
+
+
+async def modify_workout_with_ai(
+    payload: WorkoutModifyPayload, catalog: list[dict]
+) -> ModifiedWorkoutResponse:
+    """Mevcut sablonu kullanici geri bildirimiyle AI uzerinden revize eder."""
+    request = {
+        "change_reason": payload.change_reason,
+        "target_duration_minutes": payload.target_duration_minutes,
+        "current_template": payload.template.model_dump(),
+    }
+    target = payload.target_duration_minutes
+    fallback_name = payload.template.name
+    return await _generate_structured(
+        system_instruction=MODIFY_WORKOUT_SYSTEM_INSTRUCTION,
+        contents=(
+            "Workout revision request:\n"
+            + json.dumps(request, ensure_ascii=False, indent=2)
+            + "\n\nExercise catalog (id / name / category / cns load factor):\n"
+            + json.dumps(catalog, ensure_ascii=False)
+        ),
+        response_schema=AiModifyResponse,
+        parse_fn=parse_ai_modify,
+        coerce_fn=lambda ai: coerce_ai_modify(
+            ai,
+            target_minutes=target,
+            fallback_name=fallback_name,
+        ),
+    )

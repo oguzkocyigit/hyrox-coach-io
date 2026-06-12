@@ -1,6 +1,6 @@
 /**
  * Typeform tarzi genis dokunmatik secenek karti (>= 64pt hedef).
- * Secili durumda ember turuncusu cerceve + subtle dolgu.
+ * Secili durumda volt cerceve + subtle dolgu.
  */
 
 import { Ionicons } from "@expo/vector-icons";

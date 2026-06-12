@@ -96,6 +96,7 @@ export function exerciseSummary(e: TemplateExercise): string {
     parts.push(`${e.sets} set x ${m >= 1000 ? `${m / 1000}km` : `${m}m`}`);
   }
   if (e.weight_kg) parts.push(`${e.weight_kg}kg`);
+  if (e.rpe != null) parts.push(`RPE ${e.rpe}`);
   if (e.rest_seconds > 0) parts.push(`${e.rest_seconds}s dinlenme`);
   return parts.join(" · ");
 }

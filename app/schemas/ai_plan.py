@@ -47,3 +47,22 @@ class AiPlanResponse(BaseModel):
 
     coach_summary: str = ""
     days: list[AiPlanDay] = Field(default_factory=list)
+
+
+class AiSingleDayResponse(BaseModel):
+    """Tek gunluk idman uretimi icin Gemini semasi."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    focus: str = "Antrenman"
+    template: AiPlanTemplate = Field(default_factory=AiPlanTemplate)
+
+
+class AiModifyResponse(BaseModel):
+    """Mevcut idmani kullanici geri bildirimiyle revize etme semasi."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    focus: str = ""
+    coach_note: str = ""
+    template: AiPlanTemplate = Field(default_factory=AiPlanTemplate)

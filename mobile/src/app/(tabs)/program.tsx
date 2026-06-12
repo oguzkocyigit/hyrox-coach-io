@@ -17,20 +17,29 @@ import {
 } from "react-native";
 
 import {
+  useCreateTemplate,
   useDeleteEntry,
   useScheduleEntry,
   useSetEntryCompletion,
+  useUpdateTemplate,
   useWeekPlan,
 } from "@/api/hooks";
-import type { PlanEntry, WorkoutTemplate } from "@/api/types";
+import type {
+  GeneratedDayWorkout,
+  ModifiedWorkoutResponse,
+  PlanEntry,
+  WorkoutTemplate,
+} from "@/api/types";
 import {
   estimateDurationMinutes,
   typeMeta,
 } from "@/features/program/constants";
+import { DayWorkoutAISheet } from "@/features/program/DayWorkoutAISheet";
 import { TemplatePickerSheet } from "@/features/program/TemplatePickerSheet";
 import { WorkoutBuilderSheet } from "@/features/program/WorkoutBuilderSheet";
 import { WorkoutDetailSheet } from "@/features/program/WorkoutDetailSheet";
 import { WorkoutLibrarySheet } from "@/features/program/WorkoutLibrarySheet";
+import { WorkoutModifyAISheet } from "@/features/program/WorkoutModifyAISheet";
 import { Screen } from "@/ui/Screen";
 import { color, radius, space, type } from "@/ui/tokens";
 
@@ -78,8 +87,12 @@ export default function ProgramScreen() {
   const [pendingScheduleDate, setPendingScheduleDate] = useState<string | null>(null);
   const [detailEntry, setDetailEntry] = useState<PlanEntry | null>(null);
   const [libraryVisible, setLibraryVisible] = useState(false);
+  const [dayAiVisible, setDayAiVisible] = useState(false);
+  const [modifyEntry, setModifyEntry] = useState<PlanEntry | null>(null);
 
   const scheduleEntry = useScheduleEntry();
+  const createTemplate = useCreateTemplate();
+  const updateTemplate = useUpdateTemplate();
 
   const entriesByDate = useMemo(() => {
     const map = new Map<string, PlanEntry[]>();
@@ -106,6 +119,47 @@ export default function ProgramScreen() {
       });
     } catch (e) {
       Alert.alert("Hata", e instanceof Error ? e.message : "Idman atanamadi.");
+    }
+  };
+
+  const pickerDayOfWeek = useMemo(() => {
+    if (!pickerDate) return 0;
+    const d = new Date(`${pickerDate}T12:00:00`);
+    return (d.getDay() + 6) % 7;
+  }, [pickerDate]);
+
+  const handleDayAiGenerated = async (result: GeneratedDayWorkout) => {
+    const date = pickerDate;
+    if (!date) return;
+    try {
+      const saved = await createTemplate.mutateAsync(result.template);
+      setDayAiVisible(false);
+      setPickerDate(null);
+      await handleSelectTemplate(date, saved);
+      if (result.focus) {
+        Alert.alert("Idman hazir", result.focus);
+      }
+    } catch (e) {
+      Alert.alert("Hata", e instanceof Error ? e.message : "Idman kaydedilemedi.");
+    }
+  };
+
+  const handleWorkoutModified = async (result: ModifiedWorkoutResponse) => {
+    const entry = modifyEntry;
+    if (!entry) return;
+    try {
+      await updateTemplate.mutateAsync({
+        templateId: entry.template.template_id,
+        payload: result.template,
+      });
+      setModifyEntry(null);
+      const note = result.coach_note || result.focus;
+      if (note) {
+        Alert.alert("Idman guncellendi", note);
+      }
+      void refetch();
+    } catch (e) {
+      Alert.alert("Hata", e instanceof Error ? e.message : "Idman guncellenemedi.");
     }
   };
 
@@ -305,6 +359,17 @@ export default function ProgramScreen() {
           setBuilderTemplate(null);
           setBuilderVisible(true);
         }}
+        onCreateWithAI={() => {
+          setDayAiVisible(true);
+        }}
+      />
+
+      <DayWorkoutAISheet
+        visible={dayAiVisible}
+        scheduledDate={pickerDate}
+        dayOfWeek={pickerDayOfWeek}
+        onClose={() => setDayAiVisible(false)}
+        onGenerated={(result) => void handleDayAiGenerated(result)}
       />
 
       {/* Idman kurucu (yeni / duzenleme) */}
@@ -334,11 +399,24 @@ export default function ProgramScreen() {
         visible={detailEntry != null}
         template={detailEntry?.template ?? null}
         onClose={() => setDetailEntry(null)}
+        onModifyAI={() => {
+          if (detailEntry) {
+            setModifyEntry(detailEntry);
+            setDetailEntry(null);
+          }
+        }}
         onEdit={(template) => {
           setDetailEntry(null);
           setBuilderTemplate(template);
           setBuilderVisible(true);
         }}
+      />
+
+      <WorkoutModifyAISheet
+        visible={modifyEntry != null}
+        template={modifyEntry?.template ?? null}
+        onClose={() => setModifyEntry(null)}
+        onModified={(result) => void handleWorkoutModified(result)}
       />
     </Screen>
   );

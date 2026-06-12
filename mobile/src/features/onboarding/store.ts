@@ -5,6 +5,7 @@
 import { create } from "zustand";
 
 import type {
+  AthleteContext,
   EquipmentLevel,
   FedState,
   NutritionConstraint,
@@ -80,6 +81,19 @@ export function hasOverlappingDays(s: OnboardingAnswers): boolean {
   if (!s.wantsRunning) return false;
   const run = new Set(s.runningDays);
   return s.trainingDays.some((d) => run.has(d));
+}
+
+/** Gunluk AI uretiminde kullanilabilecek hafif profil (onboarding tamamlanmamis olsa bile). */
+export function buildAthleteContext(s: OnboardingAnswers): AthleteContext {
+  return {
+    goal: s.goal ?? "hybrid",
+    equipment: s.equipment ?? "full_box",
+    zone2_habit: s.zone2Habit ?? "sometimes",
+    sled_experience: s.sledExperience ?? "some",
+    olympic_proficiency: s.olympicProficiency ?? "learning",
+    five_k_pace_seconds_per_km: s.paceSecondsPerKm,
+    nutrition_constraint: s.nutritionConstraint ?? "none",
+  };
 }
 
 export function buildPayload(s: OnboardingAnswers): OnboardingPayload | null {

@@ -21,6 +21,7 @@ type TemplatePickerSheetProps = {
   onClose: () => void;
   onSelect: (template: WorkoutTemplate) => void;
   onCreateNew: () => void;
+  onCreateWithAI?: () => void;
 };
 
 export function TemplatePickerSheet({
@@ -28,6 +29,7 @@ export function TemplatePickerSheet({
   onClose,
   onSelect,
   onCreateNew,
+  onCreateWithAI,
 }: TemplatePickerSheetProps) {
   const insets = useSafeAreaInsets();
   const { data: templates, isLoading } = useTemplates();
@@ -41,6 +43,13 @@ export function TemplatePickerSheet({
             <Ionicons name="close" size={24} color={color.text.secondary} />
           </Pressable>
         </View>
+
+        {onCreateWithAI ? (
+          <Pressable onPress={onCreateWithAI} style={styles.aiRow}>
+            <Ionicons name="sparkles" size={22} color={color.accent.ink} />
+            <Text style={styles.aiText}>AI ile Olustur</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable onPress={onCreateNew} style={styles.createRow}>
           <Ionicons name="add-circle" size={22} color={color.accent.primary} />
@@ -99,6 +108,19 @@ const styles = StyleSheet.create({
   title: {
     ...type.heading1,
     color: color.text.primary,
+  },
+  aiRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    backgroundColor: color.accent.primary,
+    borderRadius: radius.md,
+    padding: space.lg,
+    marginBottom: space.sm,
+  },
+  aiText: {
+    ...type.bodyStrong,
+    color: color.accent.ink,
   },
   createRow: {
     flexDirection: "row",

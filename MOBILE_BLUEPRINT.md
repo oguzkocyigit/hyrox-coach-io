@@ -140,12 +140,12 @@ mobile/
 
 ## 7. TASARIM SİSTEMİ
 
-Tasarım yönü kararlaştırıldı: **EMBER** — asfalt grisi zemin + kor turuncusu vurgu,
+Tasarım yönü kararlaştırıldı: **VOLT** — asfalt grisi zemin + elektrik volt vurgu,
 premium atletik dil. Tam spesifikasyon (palet, tipografi, bileşenler, motion,
 erişilebilirlik) ayrı dokümandadır: **[DESIGN_SYSTEM.md](DESIGN_SYSTEM.md)**
 
 Özet:
-- **Tema:** Yalnızca koyu. Zemin `#0F1316`, vurgu `#FF5A1F`; durum renkleri
+- **Tema:** Yalnızca koyu. Zemin `#0F1316`, vurgu `#CEFF00`; durum renkleri
   yeşil/amber/kırmızı yalnızca fizyolojik anlam taşır (kırmızı = overtraining).
 - **Tipografi:** Chakra Petch (display/sayılar), Manrope (gövde), Fira Code (metrik etiketleri).
 - **Grafik dili:** Kas yükü barları her zaman 22 eşik çizgisiyle çizilir;

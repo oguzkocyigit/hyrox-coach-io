@@ -23,6 +23,8 @@ type WorkoutDetailSheetProps = {
   onClose: () => void;
   /** Verilirse sag ustte "Duzenle" gosterilir */
   onEdit?: (template: WorkoutTemplate) => void;
+  /** Verilirse "AI ile Degistir" gosterilir */
+  onModifyAI?: (template: WorkoutTemplate) => void;
 };
 
 export function WorkoutDetailSheet({
@@ -30,6 +32,7 @@ export function WorkoutDetailSheet({
   template,
   onClose,
   onEdit,
+  onModifyAI,
 }: WorkoutDetailSheetProps) {
   const insets = useSafeAreaInsets();
   if (!template) return null;
@@ -45,17 +48,30 @@ export function WorkoutDetailSheet({
           <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="Kapat">
             <Ionicons name="close" size={24} color={color.text.secondary} />
           </Pressable>
-          {onEdit ? (
-            <Pressable
-              onPress={() => onEdit(template)}
-              hitSlop={12}
-              style={styles.editLink}
-              accessibilityLabel="Duzenle"
-            >
-              <Ionicons name="create-outline" size={18} color={color.accent.primary} />
-              <Text style={styles.editText}>Duzenle</Text>
-            </Pressable>
-          ) : null}
+          <View style={styles.headerActions}>
+            {onModifyAI ? (
+              <Pressable
+                onPress={() => onModifyAI(template)}
+                hitSlop={12}
+                style={styles.editLink}
+                accessibilityLabel="AI ile degistir"
+              >
+                <Ionicons name="sparkles" size={18} color={color.accent.primary} />
+                <Text style={styles.editText}>Degistir</Text>
+              </Pressable>
+            ) : null}
+            {onEdit ? (
+              <Pressable
+                onPress={() => onEdit(template)}
+                hitSlop={12}
+                style={styles.editLink}
+                accessibilityLabel="Duzenle"
+              >
+                <Ionicons name="create-outline" size={18} color={color.accent.primary} />
+                <Text style={styles.editText}>Duzenle</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
 
         <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.xxl }]}>
@@ -129,6 +145,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: space.lg,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
   },
   editLink: {
     flexDirection: "row",

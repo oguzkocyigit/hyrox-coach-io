@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useCreateTemplate, useUpdateTemplate } from "@/api/hooks";
 import type {
+  Exercise,
   PlanWorkoutType,
   TemplateExercise,
   WorkoutFormat,
@@ -35,6 +36,7 @@ import {
   WORKOUT_TYPES,
 } from "@/features/program/constants";
 import { ExerciseEditorSheet } from "@/features/program/ExerciseEditorSheet";
+import { ExercisePicker } from "@/features/workout-log/ExercisePicker";
 import { Button } from "@/ui/Button";
 import { TextField } from "@/ui/TextField";
 import { color, radius, space, type } from "@/ui/tokens";
@@ -67,7 +69,25 @@ export function WorkoutBuilderSheet({
   const [error, setError] = useState<string | null>(null);
 
   const [editorVisible, setEditorVisible] = useState(false);
+  const [pickerVisible, setPickerVisible] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [catalogPick, setCatalogPick] = useState<Pick<Exercise, "exercise_id" | "name"> | null>(
+    null,
+  );
+  const [customNamePrefill, setCustomNamePrefill] = useState("");
+
+  const closeEditor = () => {
+    setEditorVisible(false);
+    setCatalogPick(null);
+    setCustomNamePrefill("");
+  };
+
+  const openAddFlow = () => {
+    setEditingIndex(null);
+    setCatalogPick(null);
+    setCustomNamePrefill("");
+    setPickerVisible(true);
+  };
 
   useEffect(() => {
     if (!visible) return;
@@ -267,10 +287,7 @@ export function WorkoutBuilderSheet({
           <View style={styles.exerciseHeader}>
             <Text style={styles.sectionTitle}>Egzersizler</Text>
             <Pressable
-              onPress={() => {
-                setEditingIndex(null);
-                setEditorVisible(true);
-              }}
+              onPress={openAddFlow}
               hitSlop={8}
               style={styles.addExercise}
               accessibilityLabel="Egzersiz ekle"
@@ -350,11 +367,12 @@ export function WorkoutBuilderSheet({
 
         <View style={[styles.footer, { paddingBottom: insets.bottom + space.md }]}>
           <View style={styles.footerButton}>
-            <Button label="Vazgec" variant="secondary" onPress={onClose} />
+            <Button label="Vazgec" variant="secondary" size="lg" onPress={onClose} />
           </View>
           <View style={styles.footerButton}>
             <Button
               label={template ? "Kaydet" : "Idmani Kaydet"}
+              size="lg"
               onPress={handleSave}
               loading={isSaving}
             />
@@ -362,10 +380,30 @@ export function WorkoutBuilderSheet({
         </View>
       </View>
 
+      <ExercisePicker
+        visible={pickerVisible}
+        onClose={() => setPickerVisible(false)}
+        allowCustom
+        onSelect={(exercise) => {
+          setCatalogPick({ exercise_id: exercise.exercise_id, name: exercise.name });
+          setCustomNamePrefill("");
+          setPickerVisible(false);
+          setEditorVisible(true);
+        }}
+        onCreateCustom={(prefillName) => {
+          setCatalogPick(null);
+          setCustomNamePrefill(prefillName);
+          setPickerVisible(false);
+          setEditorVisible(true);
+        }}
+      />
+
       <ExerciseEditorSheet
         visible={editorVisible}
         initial={editingIndex != null ? exercises[editingIndex] : null}
-        onClose={() => setEditorVisible(false)}
+        catalogExercise={editingIndex == null ? catalogPick : null}
+        namePrefill={editingIndex == null && !catalogPick ? customNamePrefill : ""}
+        onClose={closeEditor}
         onSave={(exercise) => {
           setExercises((list) => {
             if (editingIndex == null) return [...list, exercise];
@@ -373,6 +411,7 @@ export function WorkoutBuilderSheet({
             next[editingIndex] = exercise;
             return next;
           });
+          closeEditor();
         }}
       />
     </Modal>

@@ -52,6 +52,12 @@ class TemplateExercise(BaseModel):
     distance_m: float | None = Field(None, gt=0, le=100_000)
     duration_seconds: int | None = Field(None, gt=0, le=24 * 3600)
     rest_seconds: int = Field(0, ge=0, le=3600)
+    rpe: float = Field(
+        7.0,
+        ge=1.0,
+        le=10.0,
+        description="Hedef egzersiz RPE; idman kaydinda CNS hesabi icin kullanilir",
+    )
     instructions: str | None = Field(None, max_length=500)
 
     @model_validator(mode="after")

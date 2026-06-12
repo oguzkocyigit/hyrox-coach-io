@@ -10,7 +10,11 @@ type ButtonProps = {
   variant?: ButtonVariant;
   disabled?: boolean;
   loading?: boolean;
+  /** Footer gibi esit yukseklik gereken yerlerde ikisine de lg ver */
+  size?: "md" | "lg";
 };
+
+const HEIGHTS = { md: 44, lg: 52 } as const;
 
 export function Button({
   label,
@@ -18,8 +22,10 @@ export function Button({
   variant = "primary",
   disabled = false,
   loading = false,
+  size,
 }: ButtonProps) {
   const isInactive = disabled || loading;
+  const height = size ? HEIGHTS[size] : variant === "primary" ? HEIGHTS.lg : HEIGHTS.md;
   return (
     <Pressable
       onPress={onPress}
@@ -29,6 +35,7 @@ export function Button({
       style={({ pressed }) => [
         styles.base,
         styles[variant],
+        { height },
         pressed && variantPressed[variant],
         isInactive && styles.disabled,
       ]}
@@ -54,20 +61,15 @@ const styles = StyleSheet.create({
   },
   primary: {
     backgroundColor: color.accent.primary,
-    height: 52,
   },
   secondary: {
     borderWidth: 1,
     borderColor: color.stroke.strong,
-    height: 44,
   },
-  ghost: {
-    height: 44,
-  },
+  ghost: {},
   destructive: {
     borderWidth: 1,
     borderColor: color.status.danger,
-    height: 44,
   },
   disabled: {
     opacity: 0.5,

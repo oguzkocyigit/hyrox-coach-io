@@ -104,3 +104,55 @@ class GeneratedWeekPlan(BaseModel):
 
     coach_summary: str = Field(..., min_length=1, max_length=2000)
     days: list[GeneratedDay] = Field(..., min_length=1, max_length=7)
+
+
+class AthleteContext(BaseModel):
+    """Gunluk AI uretiminde kullanilabilecek hafif atlet profili."""
+
+    goal: TrainingGoal = "hybrid"
+    equipment: EquipmentLevel = "full_box"
+    zone2_habit: Zone2Habit = "sometimes"
+    sled_experience: SledExperience = "some"
+    olympic_proficiency: OlympicProficiency = "learning"
+    five_k_pace_seconds_per_km: int | None = Field(None, ge=180, le=720)
+    nutrition_constraint: NutritionConstraint = "none"
+
+
+SessionKind = Literal["gym", "running", "hybrid"]
+
+
+class DayWorkoutGeneratePayload(BaseModel):
+    """POST /plan/generate-day — tek gun icin AI idman uretimi."""
+
+    day_of_week: int = Field(..., ge=0, le=6, description="0=Pazartesi ... 6=Pazar")
+    session_kind: SessionKind = "gym"
+    duration_minutes: int = Field(..., ge=15, le=180)
+    preferred_workout_type: str | None = Field(
+        None,
+        max_length=30,
+        description="Opsiyonel tip ipucu: strength, metcon, running, ...",
+    )
+    athlete_context: AthleteContext | None = None
+
+
+class GeneratedDayWorkout(BaseModel):
+    """POST /plan/generate-day yaniti."""
+
+    focus: str = Field(..., min_length=1, max_length=200)
+    template: WorkoutTemplateCreate
+
+
+class WorkoutModifyPayload(BaseModel):
+    """POST /plan/modify-workout — mevcut sablonu AI ile revize et."""
+
+    template: WorkoutTemplateCreate
+    change_reason: str = Field(..., min_length=5, max_length=1000)
+    target_duration_minutes: int | None = Field(None, ge=15, le=180)
+
+
+class ModifiedWorkoutResponse(BaseModel):
+    """POST /plan/modify-workout yaniti."""
+
+    focus: str = Field("", max_length=200)
+    coach_note: str = Field("", max_length=500)
+    template: WorkoutTemplateCreate

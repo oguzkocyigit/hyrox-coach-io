@@ -57,6 +57,7 @@ def _mock_plan() -> GeneratedWeekPlan:
                             measurement="reps",
                             sets=5,
                             reps=5,
+                            rpe=8.0,
                         ),
                         TemplateExercise(
                             name="Uydurma Hareket",
@@ -64,6 +65,7 @@ def _mock_plan() -> GeneratedWeekPlan:
                             measurement="reps",
                             sets=3,
                             reps=10,
+                            rpe=7.0,
                         ),
                     ],
                 ),

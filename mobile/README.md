@@ -47,7 +47,7 @@ src/
   api/            # types.ts (backend sema aynasi), client.ts, hooks.ts (TanStack Query)
   features/       # dashboard (CNS trend, kas barlari), workout-log, account
   lib/            # supabase.ts (Secure Store oturum), auth.tsx, env.ts
-  ui/             # tokens.ts (EMBER tasarim sistemi), Screen, Button, TextField
+  ui/             # tokens.ts (VOLT tasarim sistemi), Screen, Button, TextField
 ```
 
 ## Kontroller

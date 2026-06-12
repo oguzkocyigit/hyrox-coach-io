@@ -29,6 +29,15 @@ PRO_DAILY_LIMIT: int = 5
 
 ANALYSIS_ENDPOINT = "/api/v1/analysis/weekly"
 PLAN_GENERATE_ENDPOINT = "/api/v1/plan/generate"
+PLAN_GENERATE_DAY_ENDPOINT = "/api/v1/plan/generate-day"
+PLAN_MODIFY_ENDPOINT = "/api/v1/plan/modify-workout"
+
+# Tum plan AI uretimleri ortak kota havuzunu paylasir.
+PLAN_AI_ENDPOINTS = (
+    PLAN_GENERATE_ENDPOINT,
+    PLAN_GENERATE_DAY_ENDPOINT,
+    PLAN_MODIFY_ENDPOINT,
+)
 
 # Tier -> (limit, SQL pencere kosulu)
 _TIER_WINDOWS: dict[str, tuple[int, str]] = {
@@ -56,6 +65,24 @@ async def _count_usage(
             f"WHERE user_id = :user_id AND endpoint_called = :endpoint{window_sql}"
         ),
         {"user_id": user_id, "endpoint": endpoint},
+    )
+    return result.scalar_one()
+
+
+async def _count_plan_ai_usage(
+    db: AsyncSession, user_id: str, window_condition: str | None
+) -> int:
+    """Plan AI uclarinin (generate / generate-day / modify) toplam kullanimi."""
+    window_sql = f" AND {window_condition}" if window_condition else ""
+    placeholders = ", ".join(f":ep{i}" for i in range(len(PLAN_AI_ENDPOINTS)))
+    params = {f"ep{i}": ep for i, ep in enumerate(PLAN_AI_ENDPOINTS)}
+    params["user_id"] = user_id
+    result = await db.execute(
+        text(
+            "SELECT count(*) FROM ai_usage_logs "
+            f"WHERE user_id = :user_id AND endpoint_called IN ({placeholders}){window_sql}"
+        ),
+        params,
     )
     return result.scalar_one()
 
@@ -103,9 +130,7 @@ async def enforce_plan_generation_limit(
     deneyimi); sonraki uretimler Premium/Pro gerektirir.
     """
     limit, window_condition, period = _PLAN_TIER_WINDOWS[current_user.tier]
-    used = await _count_usage(
-        db, current_user.user_id, PLAN_GENERATE_ENDPOINT, window_condition
-    )
+    used = await _count_plan_ai_usage(db, current_user.user_id, window_condition)
 
     if used >= limit:
         if current_user.tier == "free":

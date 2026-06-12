@@ -13,7 +13,7 @@ function tabIcon(name: IconName) {
   );
 }
 
-/** Orta sekme: yukseltilmis turuncu kaydet butonu (tek kalici accent dolgusu). */
+/** Orta sekme: yukseltilmis volt kaydet butonu (tek kalici accent dolgusu). */
 function LogTabIcon() {
   return (
     <View style={styles.logButton}>

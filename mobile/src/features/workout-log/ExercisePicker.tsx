@@ -29,11 +29,23 @@ type ExercisePickerProps = {
   visible: boolean;
   onClose: () => void;
   onSelect: (exercise: Exercise) => void;
-  /** Zaten ekli egzersizler listede pasif gosterilir */
-  selectedIds: string[];
+  /** Zaten ekli egzersizler listede pasif gosterilir; verilmezse tekrar secilebilir */
+  selectedIds?: string[];
+  title?: string;
+  /** Listede yoksa ozel egzersiz olusturma secenegi */
+  allowCustom?: boolean;
+  onCreateCustom?: (prefillName: string) => void;
 };
 
-export function ExercisePicker({ visible, onClose, onSelect, selectedIds }: ExercisePickerProps) {
+export function ExercisePicker({
+  visible,
+  onClose,
+  onSelect,
+  selectedIds = [],
+  title = "Egzersiz Sec",
+  allowCustom = false,
+  onCreateCustom,
+}: ExercisePickerProps) {
   const insets = useSafeAreaInsets();
   const [category, setCategory] = useState<ExerciseCategory | "all">("all");
   const [search, setSearch] = useState("");
@@ -41,8 +53,16 @@ export function ExercisePicker({ visible, onClose, onSelect, selectedIds }: Exer
 
   // Her aciliste temiz arama ile basla
   useEffect(() => {
-    if (visible) setSearch("");
+    if (visible) {
+      setSearch("");
+      setCategory("all");
+    }
   }, [visible]);
+
+  const openCustom = () => {
+    onCreateCustom?.(search.trim());
+    onClose();
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -57,7 +77,7 @@ export function ExercisePicker({ visible, onClose, onSelect, selectedIds }: Exer
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.root, { paddingTop: insets.top + space.md }]}>
         <View style={styles.header}>
-          <Text style={styles.title}>Egzersiz Sec</Text>
+          <Text style={styles.title}>{title}</Text>
           <Pressable onPress={onClose} hitSlop={12} accessibilityLabel="Kapat">
             <Ionicons name="close" size={24} color={color.text.secondary} />
           </Pressable>
@@ -118,12 +138,51 @@ export function ExercisePicker({ visible, onClose, onSelect, selectedIds }: Exer
           keyboardDismissMode="on-drag"
           ListEmptyComponent={
             isLoading ? null : (
-              <Text style={styles.empty}>
-                {search.trim()
-                  ? `"${search.trim()}" ile eslesen egzersiz yok.`
-                  : "Bu kategoride egzersiz yok."}
-              </Text>
+              <View style={styles.emptyWrap}>
+                <Text style={styles.empty}>
+                  {search.trim()
+                    ? `"${search.trim()}" ile eslesen egzersiz yok.`
+                    : "Bu kategoride egzersiz yok."}
+                </Text>
+                {allowCustom && onCreateCustom ? (
+                  <Pressable
+                    onPress={openCustom}
+                    style={({ pressed }) => [
+                      styles.customButton,
+                      pressed && styles.customButtonPressed,
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Ozel egzersiz olustur"
+                  >
+                    <Ionicons name="create-outline" size={18} color={color.accent.primary} />
+                    <Text style={styles.customButtonText}>
+                      {search.trim()
+                        ? `"${search.trim()}" olarak ozel olustur`
+                        : "Ozel egzersiz olustur"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
             )
+          }
+          ListFooterComponent={
+            allowCustom && onCreateCustom && filtered.length > 0 ? (
+              <Pressable
+                onPress={openCustom}
+                style={({ pressed }) => [
+                  styles.customFooter,
+                  pressed && styles.customButtonPressed,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Listede yok ozel egzersiz olustur"
+              >
+                <Ionicons name="add-circle-outline" size={18} color={color.text.secondary} />
+                <Text style={styles.customFooterText}>
+                  Listede yok — ozel egzersiz olustur
+                  {search.trim() ? ` ("${search.trim()}")` : ""}
+                </Text>
+              </Pressable>
+            ) : null
           }
           renderItem={({ item }) => {
             const alreadyAdded = selectedIds.includes(item.exercise_id);
@@ -253,6 +312,47 @@ const styles = StyleSheet.create({
     ...type.body,
     color: color.text.secondary,
     textAlign: "center",
+  },
+  emptyWrap: {
+    gap: space.lg,
     marginTop: space.huge,
+    paddingHorizontal: space.md,
+  },
+  customButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space.sm,
+    backgroundColor: color.accent.subtle,
+    borderWidth: 1,
+    borderColor: color.accent.primary,
+    borderRadius: radius.md,
+    paddingVertical: space.lg,
+    paddingHorizontal: space.lg,
+  },
+  customButtonPressed: {
+    backgroundColor: color.bg.elevated,
+  },
+  customButtonText: {
+    ...type.bodyStrong,
+    color: color.accent.primary,
+    textAlign: "center",
+    flexShrink: 1,
+  },
+  customFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space.sm,
+    marginTop: space.md,
+    paddingVertical: space.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: color.stroke.subtle,
+  },
+  customFooterText: {
+    ...type.small,
+    color: color.text.secondary,
+    textAlign: "center",
+    flexShrink: 1,
   },
 });

@@ -1,7 +1,7 @@
-# DESIGN SYSTEM: EMBER
+# DESIGN SYSTEM: VOLT
 
-HYROX Coach mobil uygulamasının tasarım sistemi. Yön: **EMBER** — asfalt grisi zemin
-üzerine kor turuncusu; premium atletik his (Whoop/Oura sınıfı), modern ve disiplinli.
+HYROX Coach mobil uygulamasının tasarım sistemi. Yön: **VOLT** — asfalt grisi zemin
+üzerine elektrik volt; premium atletik his (Whoop/Oura sınıfı), modern ve disiplinli.
 Tek tema: **koyu**. Açık tema yoktur ve planlanmamaktadır.
 
 Bu doküman `mobile/src/ui/tokens.ts` dosyasının birebir kaynağıdır; token adları
@@ -11,8 +11,8 @@ koddakiyle aynı tutulur.
 
 ## 1. TASARIM İLKELERİ
 
-1. **Kokpit, oyuncak değil.** Veri yoğun ekranlar sakin zeminde nefes alır; turuncu
-   yalnızca enerji ve eylem taşır. Bir ekranda birden fazla turuncu odak olmaz.
+1. **Kokpit, oyuncak değil.** Veri yoğun ekranlar sakin zeminde nefes alır; volt
+   yalnızca enerji ve eylem taşır. Bir ekranda birden fazla volt odak olmaz.
 2. **Eşiğe uzaklık, ham sayı değil.** Her metrik bağlamıyla gösterilir
    ("18/22 set", eşik çizgisi her bar grafiğinde görünür).
 3. **Risk her zaman kırmızıdır.** `danger` rengi yalnızca overtraining/limit aşımı
@@ -36,10 +36,10 @@ koddakiyle aynı tutulur.
 ### Marka / vurgu
 | Token | Hex | Kullanım |
 |---|---|---|
-| `accent.primary` | `#FF5A1F` | Birincil CTA, aktif tab, seçili durum, grafik vurgusu |
-| `accent.pressed` | `#E04A12` | Basılı (pressed) durum |
-| `accent.subtle` | `#FF5A1F` @ %12 alpha | Seçili satır zemini, ikincil vurgu zemini |
-| `accent.ink` | `#0F1316` | Turuncu zemin üzerindeki metin/ikon |
+| `accent.primary` | `#CEFF00` | Birincil CTA, aktif tab, seçili durum, grafik vurgusu |
+| `accent.pressed` | `#B5E600` | Basılı (pressed) durum |
+| `accent.subtle` | `#CEFF00` @ %12 alpha | Seçili satır zemini, ikincil vurgu zemini |
+| `accent.ink` | `#0F1316` | Volt zemin üzerindeki metin/ikon |
 
 ### Metin
 | Token | Hex | Kullanım |
@@ -57,7 +57,7 @@ koddakiyle aynı tutulur.
 | `status.info` | `#5AA9FF` | Bilgi, senkron durumu |
 
 **Kural:** Kas yükü barları ve CNS göstergeleri rengini her zaman bu üçlüden alır
-(safe/caution/danger), asla `accent`'tan almaz. Turuncu "marka", yeşil-amber-kırmızı
+(safe/caution/danger), asla `accent`'tan almaz. Volt "marka", yeşil-amber-kırmızı
 "fizyoloji" konuşur.
 
 ### Tier rozetleri
@@ -141,7 +141,7 @@ Yükseklik 52 (primary), 44 (diğerleri). Basılı durumda zemin `accent.pressed
 - `bg.surface` zemin, üstte 1px `stroke.subtle`.
 - 5 sekme: Dashboard, Geçmiş, **Kaydet (orta, yükseltilmiş)**, Koç, Profil.
 - Orta buton: 56px daire, `accent.primary` zemin, `accent.ink` artı ikonu —
-  uygulamanın tek kalıcı turuncu dolgusu.
+  uygulamanın tek kalıcı volt dolgusu.
 - Aktif sekme: `accent.primary` ikon + etiket; pasif: `text.secondary`.
 
 ### Bottom sheet (idman sonucu)
@@ -187,7 +187,7 @@ Yanıp sönme, sonsuz döngü ve parallax yok.
 
 ## 8. ERİŞİLEBİLİRLİK
 
-- Kontrast: `text.primary` / `bg.base` ≈ 14:1; `accent.primary` / `bg.base` ≈ 5.4:1;
+- Kontrast: `text.primary` / `bg.base` ≈ 14:1; `accent.primary` / `bg.base` ≈ 15:1;
   tüm metin-zemin çiftleri WCAG AA üzerinde tutulur.
 - Renk tek başına anlam taşımaz: danger durumunda her zaman ikon + metin eşlik eder.
 - Dinamik font ölçeğine (iOS Dynamic Type) `body` ve `small` uyum sağlar;
@@ -207,4 +207,4 @@ Yanıp sönme, sonsuz döngü ve parallax yok.
   (`CnsTrendChart`, `MuscleLoadBar`); renk/eşik kuralları `tokens.ts`'teki
   `chart` sabitleri ve `loadColor()` üzerinden uygulanır. Grafik ihtiyacı
   büyürse victory-native'e geçilebilir.
-- App ikonu / splash: asfalt zemin üzerine turuncu monogram (Faz 1 sonunda ayrı iş).
+- App ikonu / splash: asfalt zemin üzerine volt monogram (Faz 1 sonunda ayrı iş).

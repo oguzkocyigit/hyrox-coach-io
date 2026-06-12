@@ -1,5 +1,5 @@
 /**
- * EMBER kaydirici. PanResponder tabanli: ek native modul gerektirmez,
+ * VOLT kaydirici. PanResponder tabanli: ek native modul gerektirmez,
  * dolayisiyla dev client'i yeniden derletmez. Deger etiketi ustte,
  * min/max etiketleri altta gosterilir.
  */

@@ -225,6 +225,8 @@ export interface TemplateExercise {
   distance_m?: number | null;
   duration_seconds?: number | null;
   rest_seconds: number;
+  /** Hedef RPE (1-10); CNS hesabi icin idman kaydinda kullanilir */
+  rpe?: number;
   instructions?: string | null;
 }
 
@@ -325,6 +327,46 @@ export interface GeneratedDay {
 export interface GeneratedWeekPlan {
   coach_summary: string;
   days: GeneratedDay[];
+}
+
+// ---------------------------------------------------------------
+// AI gunluk idman + revize (POST /plan/generate-day, /plan/modify-workout)
+// ---------------------------------------------------------------
+export type SessionKind = "gym" | "running" | "hybrid";
+
+export interface AthleteContext {
+  goal?: TrainingGoal;
+  equipment?: EquipmentLevel;
+  zone2_habit?: Zone2Habit;
+  sled_experience?: SledExperience;
+  olympic_proficiency?: OlympicProficiency;
+  five_k_pace_seconds_per_km?: number | null;
+  nutrition_constraint?: NutritionConstraint;
+}
+
+export interface DayWorkoutGeneratePayload {
+  day_of_week: number;
+  session_kind: SessionKind;
+  duration_minutes: number;
+  preferred_workout_type?: string | null;
+  athlete_context?: AthleteContext | null;
+}
+
+export interface GeneratedDayWorkout {
+  focus: string;
+  template: WorkoutTemplateCreate;
+}
+
+export interface WorkoutModifyPayload {
+  template: WorkoutTemplateCreate;
+  change_reason: string;
+  target_duration_minutes?: number | null;
+}
+
+export interface ModifiedWorkoutResponse {
+  focus: string;
+  coach_note: string;
+  template: WorkoutTemplateCreate;
 }
 
 // ---------------------------------------------------------------
