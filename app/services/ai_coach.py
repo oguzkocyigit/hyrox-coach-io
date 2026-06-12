@@ -16,8 +16,10 @@ from google import genai
 from google.genai import types as genai_types
 
 from app.core.config import get_settings
+from app.schemas.ai_plan import AiPlanResponse
 from app.schemas.analysis import CoachAnalysis, WeeklyMetrics
 from app.schemas.onboarding import GeneratedWeekPlan, OnboardingPayload
+from app.services.plan_coercion import coerce_ai_plan
 
 # Blueprint'teki rol tanimi (sayfa sonu prompt spesifikasyonu)
 SYSTEM_INSTRUCTION = (
@@ -123,9 +125,12 @@ async def generate_onboarding_plan(
         config=genai_types.GenerateContentConfig(
             system_instruction=PLAN_SYSTEM_INSTRUCTION,
             response_mime_type="application/json",
-            response_schema=GeneratedWeekPlan,
+            response_schema=AiPlanResponse,
             temperature=0.6,
             max_output_tokens=8192,
         ),
     )
-    return GeneratedWeekPlan.model_validate_json(response.text)
+    if not response.text:
+        raise ValueError("Gemini bos yanit dondurdu.")
+    ai = AiPlanResponse.model_validate_json(response.text)
+    return coerce_ai_plan(ai)
