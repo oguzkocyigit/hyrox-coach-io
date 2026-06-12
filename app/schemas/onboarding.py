@@ -8,7 +8,7 @@ boylece uretilen plan dogrudan /templates + /plan/entries uclarina yazilabilir.
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.plans import WorkoutTemplateCreate
 
@@ -18,13 +18,42 @@ SledExperience = Literal["none", "some", "confident"]
 OlympicProficiency = Literal["none", "learning", "proficient"]
 NutritionConstraint = Literal["none", "omad", "intermittent_fasting", "low_carb"]
 EquipmentLevel = Literal["full_box", "standard_gym", "minimal"]
+TimeOfDay = Literal["morning", "afternoon", "evening", "flexible"]
+TimeWindow = Literal[
+    "05_08", "08_11", "11_14", "14_17", "17_20", "20_22", "flexible"
+]
+FedState = Literal["fed", "fasted", "flexible"]
 
 
 class OnboardingPayload(BaseModel):
     """Sihirbaz cevaplari — AI'a verilecek atlet profili."""
 
     goal: TrainingGoal
+    training_days: list[int] = Field(
+        ...,
+        min_length=2,
+        max_length=7,
+        description="Salon/idman gunleri (0=Pazartesi ... 6=Pazar)",
+    )
     days_per_week: int = Field(..., ge=2, le=7)
+    wants_running: bool
+    running_days: list[int] = Field(
+        default_factory=list,
+        max_length=7,
+        description="Kosu gunleri; wants_running=true ise en az 1",
+    )
+    split_run_and_gym: bool = Field(
+        ...,
+        description="Ayni gunde kosu + salon ayri seans mi",
+    )
+    gym_time_of_day: TimeOfDay
+    run_time_of_day: TimeOfDay
+    gym_time_window: TimeWindow
+    run_time_window: TimeWindow
+    gym_fed_state: FedState
+    run_fed_state: FedState
+    gym_duration_minutes: int = Field(..., ge=30, le=120)
+    run_duration_minutes: int = Field(..., ge=20, le=90)
     five_k_pace_seconds_per_km: int | None = Field(
         None, ge=180, le=720, description="5K ortalama tempo (sn/km)"
     )
@@ -36,6 +65,30 @@ class OnboardingPayload(BaseModel):
     )
     nutrition_constraint: NutritionConstraint
     equipment: EquipmentLevel
+
+    @field_validator("training_days", "running_days")
+    @classmethod
+    def validate_day_range(cls, v: list[int]) -> list[int]:
+        if len(set(v)) != len(v):
+            raise ValueError("Gun listesinde tekrar olamaz")
+        for d in v:
+            if d < 0 or d > 6:
+                raise ValueError("Gun indeksi 0-6 arasinda olmali")
+        return sorted(v)
+
+    @model_validator(mode="after")
+    def validate_schedule(self) -> "OnboardingPayload":
+        if len(self.training_days) != self.days_per_week:
+            raise ValueError("days_per_week, training_days uzunluguna esit olmali")
+        if self.wants_running and len(self.running_days) < 1:
+            raise ValueError("Kosu secildiyse en az bir kosu gunu gerekli")
+        if not self.wants_running and self.running_days:
+            raise ValueError("Kosu secilmediyse running_days bos olmali")
+        overlap = set(self.training_days) & set(self.running_days)
+        if overlap and not self.split_run_and_gym:
+            # Tek blok: overlap kabul edilebilir (hibrit gun)
+            pass
+        return self
 
 
 class GeneratedDay(BaseModel):

@@ -7,9 +7,12 @@ import type { Ionicons } from "@expo/vector-icons";
 
 import type {
   EquipmentLevel,
+  FedState,
   NutritionConstraint,
   OlympicProficiency,
   SledExperience,
+  TimeOfDay,
+  TimeWindow,
   TrainingGoal,
   Zone2Habit,
 } from "@/api/types";
@@ -174,3 +177,81 @@ export function formatPace(secondsPerKm: number): string {
   const s = Math.round(secondsPerKm % 60);
   return `${m}:${String(s).padStart(2, "0")} /km`;
 }
+
+export const TIME_OF_DAY_OPTIONS: Option<TimeOfDay>[] = [
+  {
+    value: "morning",
+    label: "Sabah",
+    description: "06:00 – 11:00 arasi tercih",
+    icon: "sunny-outline",
+  },
+  {
+    value: "afternoon",
+    label: "Ogle / Ogleden sonra",
+    description: "11:00 – 17:00 arasi",
+    icon: "partly-sunny-outline",
+  },
+  {
+    value: "evening",
+    label: "Aksam",
+    description: "17:00 – 21:00 arasi",
+    icon: "moon-outline",
+  },
+  {
+    value: "flexible",
+    label: "Esnek",
+    description: "Gun icinde saat onemli degil",
+    icon: "shuffle-outline",
+  },
+];
+
+export const TIME_WINDOW_OPTIONS: Option<TimeWindow>[] = [
+  { value: "05_08", label: "05:00 – 08:00", description: "Erken sabah", icon: "alarm-outline" },
+  { value: "08_11", label: "08:00 – 11:00", description: "Sabah", icon: "sunny-outline" },
+  { value: "11_14", label: "11:00 – 14:00", description: "Ogle", icon: "restaurant-outline" },
+  { value: "14_17", label: "14:00 – 17:00", description: "Ogleden sonra", icon: "walk-outline" },
+  { value: "17_20", label: "17:00 – 20:00", description: "Aksam", icon: "fitness-outline" },
+  { value: "20_22", label: "20:00 – 22:00", description: "Gec aksam", icon: "moon-outline" },
+  {
+    value: "flexible",
+    label: "Esnek",
+    description: "Belirli saat araligi yok",
+    icon: "time-outline",
+  },
+];
+
+export const FED_STATE_OPTIONS: Option<FedState>[] = [
+  {
+    value: "fed",
+    label: "Tok karnina",
+    description: "Ogun sonrasi veya oncesi atistirmali ile",
+    icon: "restaurant-outline",
+  },
+  {
+    value: "fasted",
+    label: "Ac karnina",
+    description: "Kardiyo / sabah idmanlari icin",
+    icon: "water-outline",
+  },
+  {
+    value: "flexible",
+    label: "Fark etmez",
+    description: "Programa gore ayarlanir",
+    icon: "shuffle-outline",
+  },
+];
+
+export const SPLIT_SESSION_OPTIONS: Option<boolean>[] = [
+  {
+    value: true,
+    label: "Ayri seanslar",
+    description: "Ornek: sabah kosu, aksam salon",
+    icon: "git-branch-outline",
+  },
+  {
+    value: false,
+    label: "Tek blok",
+    description: "Ayni gun hibrit idman (kosu + salon bir arada)",
+    icon: "layers-outline",
+  },
+];

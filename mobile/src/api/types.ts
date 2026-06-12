@@ -277,15 +277,39 @@ export type NutritionConstraint =
   | "intermittent_fasting"
   | "low_carb";
 export type EquipmentLevel = "full_box" | "standard_gym" | "minimal";
+export type TimeOfDay = "morning" | "afternoon" | "evening" | "flexible";
+export type TimeWindow =
+  | "05_08"
+  | "08_11"
+  | "11_14"
+  | "14_17"
+  | "17_20"
+  | "20_22"
+  | "flexible";
+export type FedState = "fed" | "fasted" | "flexible";
 
 export interface OnboardingPayload {
   goal: TrainingGoal;
-  days_per_week: number; // 2-7
+  /** Secilen salon/idman gunleri (0=Pzt ... 6=Paz); days_per_week = uzunluk */
+  training_days: number[];
+  days_per_week: number;
+  wants_running: boolean;
+  /** Kosu gunleri; wants_running=true ise en az 1 */
+  running_days: number[];
+  /** Ayni gunde kosu + salon ayri seans mi */
+  split_run_and_gym: boolean;
+  gym_time_of_day: TimeOfDay;
+  run_time_of_day: TimeOfDay;
+  gym_time_window: TimeWindow;
+  run_time_window: TimeWindow;
+  gym_fed_state: FedState;
+  run_fed_state: FedState;
+  gym_duration_minutes: number;
+  run_duration_minutes: number;
   five_k_pace_seconds_per_km?: number | null;
   zone2_habit: Zone2Habit;
   sled_experience: SledExperience;
   olympic_proficiency: OlympicProficiency;
-  /** Agir kondisyon gunleri hafta sonuna alinsin mi */
   weekend_conditioning: boolean;
   nutrition_constraint: NutritionConstraint;
   equipment: EquipmentLevel;
