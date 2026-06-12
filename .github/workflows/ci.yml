@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # ----------------------------------------------------------------
+  # Hizli kontroller: DB/secret gerektirmez, her push'ta calisir
+  # ----------------------------------------------------------------
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run unit tests (no DB required)
+        env:
+          # Settings'in yuklenebilmesi icin sahte DSN yeterli;
+          # birim testleri veritabanina baglanmaz.
+          DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
+        run: pytest tests/test_analytics_unit.py tests/test_schemas.py -q
+
+  # ----------------------------------------------------------------
+  # Entegrasyon testleri: canli Supabase dev DB'sine karsi calisir.
+  # Repo secret'lari tanimliysa devreye girer (fork PR'larda atlanir).
+  # Gerekli secret'lar: DATABASE_URL, SUPABASE_URL
+  # ----------------------------------------------------------------
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    if: github.event_name == 'push'
+    environment: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run full test suite
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "DATABASE_URL secret tanimli degil; entegrasyon testleri atlandi."
+            exit 0
+          fi
+          pytest -q
+
+  # ----------------------------------------------------------------
+  # Docker imajinin derlenebildigini dogrular
+  # ----------------------------------------------------------------
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t hyrox-coach:ci .

@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "HYROX Coach",
+    "slug": "hyrox-coach",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "hyroxcoach",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0F1316",
+    "ios": {
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.hyroxcoach.app",
+      "infoPlist": {
+        "UIUserInterfaceStyle": "Dark"
+      }
+    },
+    "android": {
+      "package": "com.hyroxcoach.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#0F1316",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0F1316",
+          "android": {
+            "image": "./assets/images/splash-icon.png",
+            "imageWidth": 76
+          }
+        }
+      ],
+      "expo-secure-store",
+      "expo-font",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Kosu ve kurek antrenmanlarinizi otomatik senkronlamak ve Zone 2 nabiz duzeltmesini uygulamak icin saglik verilerinize okuma erisimi gerekiyor.",
+          "NSHealthUpdateUsageDescription": "HYROX Coach saglik verisi yazmaz.",
+          "background": false
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

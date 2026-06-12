@@ -1,0 +1,20 @@
+# Hybrid Performance App - Cursor Rules
+
+## Tech Stack & Core Architecture
+- Backend: Python 3.11+ / FastAPI (Asynchronous programming with async/await)
+- Database: PostgreSQL via Supabase (Always design schemas for relational integrity)
+- AI: Google Gemini 2.5 Flash Lite via Google AI Studio API
+- Native integrations: iOS HealthKit, Android Health Connect (API layer only)
+
+## Coding Standards & Guidelines (Python/FastAPI)
+- Use Pydantic v2 for all Request/Response data validation models.
+- Implement explicit type hinting everywhere.
+- Write modular, clean, and reusable code. Separate routes, services, models, and schemas.
+- Do not use global state; utilize FastAPI Dependency Injection (`Depends`) for DB sessions and authentication.
+- All database operations must handle transaction rollbacks gracefully on error.
+
+## Project Specific Rules
+- Do NOT use LLM/AI for daily workout logging or volume/CNS calculations. These MUST be processed deterministically using python math logic and database queries to save token costs.
+- AI should ONLY be invoked for weekly/monthly analysis, RAG operations, or programmatic adaptations.
+- Always include `user_tier` ('free', 'premium', 'pro') checks in middleware or dependencies for rate-limiting AI features.
+- Design database queries efficiently assuming an Always-Online network strategy.
