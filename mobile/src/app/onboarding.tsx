@@ -216,6 +216,7 @@ export default function OnboardingScreen() {
   const handleGenerate = () => {
     const payload = buildPayload(store);
     if (!payload) return;
+    generate.reset();
     generate.mutate(payload);
   };
 
@@ -388,8 +389,27 @@ export default function OnboardingScreen() {
 
         {generate.isError ? (
           <View style={styles.errorBox}>
-            <Ionicons name="alert-circle-outline" size={16} color={color.status.danger} />
-            <Text style={styles.errorText}>
+            <Ionicons
+              name={
+                generate.error instanceof ApiError && generate.error.status === 429
+                  ? "time-outline"
+                  : "alert-circle-outline"
+              }
+              size={16}
+              color={
+                generate.error instanceof ApiError && generate.error.status === 429
+                  ? color.text.secondary
+                  : color.status.danger
+              }
+            />
+            <Text
+              style={[
+                styles.errorText,
+                generate.error instanceof ApiError &&
+                  generate.error.status === 429 &&
+                  styles.errorTextCalm,
+              ]}
+            >
               {generate.error instanceof ApiError
                 ? generate.error.message
                 : "Plan olusturulamadi. Tekrar dene."}
@@ -522,6 +542,9 @@ const styles = StyleSheet.create({
     ...type.small,
     color: color.status.danger,
     flex: 1,
+  },
+  errorTextCalm: {
+    color: color.text.secondary,
   },
   summaryBox: {
     flexDirection: "row",

@@ -14,12 +14,13 @@ import json
 
 from google import genai
 from google.genai import types as genai_types
+from pydantic import ValidationError
 
 from app.core.config import get_settings
 from app.schemas.ai_plan import AiPlanResponse
 from app.schemas.analysis import CoachAnalysis, WeeklyMetrics
 from app.schemas.onboarding import GeneratedWeekPlan, OnboardingPayload
-from app.services.plan_coercion import coerce_ai_plan
+from app.services.plan_coercion import coerce_ai_plan, parse_ai_response
 
 # Blueprint'teki rol tanimi (sayfa sonu prompt spesifikasyonu)
 SYSTEM_INSTRUCTION = (
@@ -106,6 +107,7 @@ async def generate_onboarding_plan(
 
     Katalog deterministik motorun kaynagidir (exercise_id + cns_load_factor);
     AI yalnizca bu kimlikleri secip gunlere dagitir, hicbir metrik hesaplamaz.
+    Gecici hatalarda en fazla 3 deneme yapilir.
     """
     settings = get_settings()
     if not settings.gemini_api_key:
@@ -114,23 +116,33 @@ async def generate_onboarding_plan(
         )
 
     client = genai.Client(api_key=settings.gemini_api_key)
-    response = await client.aio.models.generate_content(
-        model=settings.gemini_model,
-        contents=(
-            "Athlete profile:\n"
-            + payload.model_dump_json(indent=2)
-            + "\n\nExercise catalog (id / name / category / cns load factor):\n"
-            + json.dumps(catalog, ensure_ascii=False)
-        ),
-        config=genai_types.GenerateContentConfig(
-            system_instruction=PLAN_SYSTEM_INSTRUCTION,
-            response_mime_type="application/json",
-            response_schema=AiPlanResponse,
-            temperature=0.6,
-            max_output_tokens=8192,
-        ),
-    )
-    if not response.text:
-        raise ValueError("Gemini bos yanit dondurdu.")
-    ai = AiPlanResponse.model_validate_json(response.text)
-    return coerce_ai_plan(ai)
+    last_error: Exception | None = None
+
+    for attempt in range(3):
+        try:
+            response = await client.aio.models.generate_content(
+                model=settings.gemini_model,
+                contents=(
+                    "Athlete profile:\n"
+                    + payload.model_dump_json(indent=2)
+                    + "\n\nExercise catalog (id / name / category / cns load factor):\n"
+                    + json.dumps(catalog, ensure_ascii=False)
+                ),
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=PLAN_SYSTEM_INSTRUCTION,
+                    response_mime_type="application/json",
+                    response_schema=AiPlanResponse,
+                    temperature=0.55 + attempt * 0.05,
+                    max_output_tokens=8192,
+                ),
+            )
+            if not response.text:
+                raise ValueError("Gemini bos yanit dondurdu.")
+            ai = parse_ai_response(response.text)
+            return coerce_ai_plan(ai)
+        except (ValidationError, ValueError) as exc:
+            last_error = exc
+            continue
+
+    assert last_error is not None
+    raise last_error

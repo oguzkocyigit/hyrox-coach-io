@@ -133,10 +133,7 @@ async def generate_plan(
             detail="AI gecerli bir plan uretemedi. Lutfen tekrar dene.",
         ) from exc
     except ValueError as exc:
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
     valid_ids = {item["id"] for item in catalog}
     for day in plan.days:
