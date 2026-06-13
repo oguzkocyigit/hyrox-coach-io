@@ -129,17 +129,15 @@ async def generate_plan(
 ) -> GeneratedWeekPlan:
     """Onboarding cevaplarini Gemini'ye besler, haftalik program doner.
 
-    - Egzersiz katalogu (exercise_id + CNS faktorleri) prompt'a verilir;
-      AI yalnizca mevcut kimlikleri secer, hicbir metrik hesaplamaz.
-    - AI'in dondurdugu bilinmeyen exercise_id'ler null'a cevrilir (isim kalir).
+    - AI yalnizca coach_workout_templates listesinden template_id secer (RAG).
+    - Tam exercises JSONB backend'de hydrate edilir; token maliyeti dusuktur.
+    - modifications ile remove/add exercise_id uygulanir.
     - Kota yalnizca BASARILI uretimden sonra tuketilir.
-    - Plan istemcide onizlenir; kullanici onaylarsa mevcut /templates +
-      /plan/entries uclariyla kaydedilir (bu uc DB'ye yazmaz).
     """
     catalog = await plan_service.fetch_exercise_catalog(db)
 
     try:
-        plan = await generate_onboarding_plan(payload, catalog)
+        plan = await generate_onboarding_plan(db, payload, catalog)
     except AIServiceNotConfiguredError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except ValidationError as exc:

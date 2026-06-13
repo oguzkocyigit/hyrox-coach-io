@@ -11,6 +11,7 @@ from app.schemas.ai_plan import (
     AiPlanResponse,
     AiSingleDayResponse,
     AiSuggestExerciseResponse,
+    WeeklyPlanAIResponse,
 )
 from app.schemas.onboarding import (
     AthleteContext,
@@ -165,6 +166,18 @@ def _infer_rounds_from_duration(template: WorkoutTemplateCreate) -> int:
 
     rounds = round((target_minutes * 60) / round_seconds)
     return min(50, max(3, rounds))
+
+
+def parse_weekly_plan_ai(raw_text: str) -> WeeklyPlanAIResponse:
+    """Gemini compact sablon-secim JSON'unu parse eder."""
+    try:
+        return WeeklyPlanAIResponse.model_validate_json(raw_text)
+    except ValidationError:
+        logger.warning(
+            "WeeklyPlanAIResponse strict parse failed, trying json.loads fallback"
+        )
+        data = json.loads(raw_text)
+        return WeeklyPlanAIResponse.model_validate(data)
 
 
 def parse_ai_response(raw_text: str) -> AiPlanResponse:
@@ -412,3 +425,205 @@ def coerce_ai_suggest_exercise(ai: AiSuggestExerciseResponse) -> ExerciseSuggest
         raise ValueError("AI gecerli egzersiz oneremedi.")
     note = (ai.coach_note or "").strip() or "Program akisina uygun hareket."
     return ExerciseSuggestResponse(coach_note=note[:500], exercise=exercise)
+
+
+# ---------------------------------------------------------------
+# Sablon-secim (RAG) haftalik plan hydration
+# ---------------------------------------------------------------
+_CATEGORY_TO_WORKOUT_TYPE: dict[str, str] = {
+    "strength": "strength",
+    "hyrox": "hybrid",
+    "crossfit": "metcon",
+    "running": "running",
+    "olympic": "power",
+}
+
+_CATEGORY_TO_FORMAT: dict[str, str] = {
+    "strength": "standard",
+    "hyrox": "circuit",
+    "crossfit": "standard",
+    "running": "standard",
+    "olympic": "standard",
+}
+
+_DEFAULT_ADD_EXERCISE: dict[str, int | float] = {
+    "sets": 3,
+    "reps": 10,
+    "rest_seconds": 60,
+}
+
+
+def _catalog_lookup(catalog: list[dict]) -> dict[str, dict]:
+    return {item["id"]: item for item in catalog}
+
+
+def _infer_measurement(raw: dict) -> str:
+    if raw.get("distance_m") is not None:
+        return "distance"
+    if raw.get("duration_seconds") is not None:
+        return "time"
+    return "reps"
+
+
+def _coach_row_to_template_exercise(
+    raw: dict,
+    catalog_by_id: dict[str, dict],
+) -> TemplateExercise | None:
+    """coach_workout_templates JSONB satirini TemplateExercise'e cevirir."""
+    exercise_id = raw.get("exercise_id")
+    if not exercise_id:
+        return None
+
+    meta = catalog_by_id.get(exercise_id)
+    name = meta["name"] if meta else str(exercise_id).replace("_", " ").title()
+    measurement = _infer_measurement(raw)
+
+    payload: dict = {
+        "name": name,
+        "exercise_id": exercise_id,
+        "measurement": measurement,
+        "sets": max(1, int(raw.get("sets") or 1)),
+        "rest_seconds": int(raw.get("rest_seconds") or 0),
+        "rpe": float(raw.get("rpe") or 7.0),
+    }
+    if measurement == "reps":
+        payload["reps"] = int(raw.get("reps") or 10)
+    elif measurement == "distance":
+        payload["distance_m"] = float(raw.get("distance_m") or 400)
+    else:
+        payload["duration_seconds"] = int(raw.get("duration_seconds") or 60)
+
+    return _sanitize_exercise(payload)
+
+
+def _default_exercise_from_catalog(
+    exercise_id: str,
+    catalog_by_id: dict[str, dict],
+) -> TemplateExercise | None:
+    """AI modifications.add_exercises icin katalogdan varsayilan hareket."""
+    meta = catalog_by_id.get(exercise_id)
+    if not meta:
+        return None
+
+    category = meta.get("category", "strength")
+    if category == "running":
+        measurement = "distance"
+        payload = {
+            "name": meta["name"],
+            "exercise_id": exercise_id,
+            "measurement": measurement,
+            "sets": 1,
+            "distance_m": 5000,
+            "rest_seconds": 0,
+            "rpe": 6.0,
+        }
+    else:
+        payload = {
+            "name": meta["name"],
+            "exercise_id": exercise_id,
+            "measurement": "reps",
+            "sets": int(_DEFAULT_ADD_EXERCISE["sets"]),
+            "reps": int(_DEFAULT_ADD_EXERCISE["reps"]),
+            "rest_seconds": int(_DEFAULT_ADD_EXERCISE["rest_seconds"]),
+            "rpe": 7.0,
+        }
+    return _sanitize_exercise(payload)
+
+
+def _apply_template_modifications(
+    exercises: list[TemplateExercise],
+    modifications,
+    catalog_by_id: dict[str, dict],
+) -> list[TemplateExercise]:
+    remove_ids = {eid.strip() for eid in modifications.remove_exercises if eid}
+    if remove_ids:
+        exercises = [
+            ex for ex in exercises if not ex.exercise_id or ex.exercise_id not in remove_ids
+        ]
+
+    existing_ids = {ex.exercise_id for ex in exercises if ex.exercise_id}
+    for exercise_id in modifications.add_exercises:
+        eid = exercise_id.strip()
+        if not eid or eid in existing_ids:
+            continue
+        added = _default_exercise_from_catalog(eid, catalog_by_id)
+        if added:
+            exercises.append(added)
+            existing_ids.add(eid)
+
+    return exercises
+
+
+def _build_template_from_coach_row(
+    coach_row: dict,
+    modifications,
+    catalog_by_id: dict[str, dict],
+) -> WorkoutTemplateCreate | None:
+    category = str(coach_row.get("category") or "hybrid")
+    workout_type = _normalize_workout_type(_CATEGORY_TO_WORKOUT_TYPE.get(category, "hybrid"))
+    workout_format = _normalize_format(_CATEGORY_TO_FORMAT.get(category, "standard"))
+
+    exercises: list[TemplateExercise] = []
+    for raw in coach_row.get("exercises") or []:
+        if not isinstance(raw, dict):
+            continue
+        parsed = _coach_row_to_template_exercise(raw, catalog_by_id)
+        if parsed:
+            exercises.append(parsed)
+
+    exercises = _apply_template_modifications(exercises, modifications, catalog_by_id)
+    if not exercises:
+        return None
+
+    template = WorkoutTemplateCreate(
+        name=str(coach_row.get("name") or "Idman")[:120],
+        workout_type=workout_type,  # type: ignore[arg-type]
+        format=workout_format,  # type: ignore[arg-type]
+        rounds=max(1, int(coach_row.get("rounds") or 1)),
+        time_cap_minutes=coach_row.get("time_cap_minutes"),
+        notes=coach_row.get("description"),
+        exercises=exercises,
+    )
+    return _normalize_station_structure(template)
+
+
+def hydrate_weekly_plan_from_templates(
+    ai: WeeklyPlanAIResponse,
+    payload: OnboardingPayload,
+    templates_by_id: dict[str, dict],
+    catalog: list[dict],
+) -> GeneratedWeekPlan:
+    """Gemini'nin sablon-secim ciktisini mobilin bekledigi GeneratedWeekPlan'a donusturur."""
+    catalog_by_id = _catalog_lookup(catalog)
+    days: list[GeneratedDay] = []
+
+    for day in ai.days:
+        coach_row = templates_by_id.get(day.template_id)
+        if not coach_row:
+            logger.warning("Bilinmeyen template_id atlandi: %s", day.template_id)
+            continue
+
+        template = _build_template_from_coach_row(
+            coach_row, day.modifications, catalog_by_id
+        )
+        if not template:
+            continue
+
+        target = _target_minutes_for_day(template.workout_type, payload)
+        template = scale_template_to_duration(template, target)
+
+        days.append(
+            GeneratedDay(
+                day_of_week=max(0, min(6, day.day_of_week)),
+                focus=(day.focus or coach_row.get("description") or "Antrenman")[:200],
+                template=template,
+            )
+        )
+
+    if not days:
+        raise ValueError(
+            "AI gecerli sablon secimi yapamadi veya sablonlar hydrate edilemedi."
+        )
+
+    summary = (ai.coach_summary or "").strip() or "Haftalik programin hazir."
+    return GeneratedWeekPlan(coach_summary=summary[:2000], days=days)

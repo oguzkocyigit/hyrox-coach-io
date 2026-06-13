@@ -20,9 +20,9 @@ from app.core.config import get_settings
 from app.schemas.ai_coach import SundayReviewPayload, SundayReviewResponse
 from app.schemas.ai_plan import (
     AiModifyResponse,
-    AiPlanResponse,
     AiSingleDayResponse,
     AiSuggestExerciseResponse,
+    WeeklyPlanAIResponse,
 )
 from app.schemas.analysis import CoachAnalysis, WeeklyMetrics
 from app.schemas.onboarding import (
@@ -37,13 +37,13 @@ from app.schemas.onboarding import (
 )
 from app.services.plan_coercion import (
     coerce_ai_modify,
-    coerce_ai_plan,
     coerce_ai_single_day,
     coerce_ai_suggest_exercise,
+    hydrate_weekly_plan_from_templates,
     parse_ai_modify,
-    parse_ai_response,
     parse_ai_single_day,
     parse_ai_suggest_exercise,
+    parse_weekly_plan_ai,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,6 +51,10 @@ from app.services.analytics import (
     build_weekly_metrics,
     fetch_weekly_plan_compliance,
     fetch_weekly_workout_logs,
+)
+from app.services.template_retrieval import (
+    fetch_coach_template_catalog,
+    fetch_coach_templates_by_ids,
 )
 
 # Blueprint'teki rol tanimi (sayfa sonu prompt spesifikasyonu)
@@ -99,62 +103,33 @@ async def generate_weekly_coach_note(metrics: WeeklyMetrics) -> CoachAnalysis:
 # AI Onboarding Wizard: kisisellestirilmis haftalik program uretimi
 # ---------------------------------------------------------------
 PLAN_SYSTEM_INSTRUCTION = (
-    "Role: Elite hybrid training program designer (HYROX / CrossFit / strength).\n"
-    "Task: Build a personalized one-week training program from the athlete profile "
-    "and the provided exercise catalog.\n"
+    "Role: Elite hybrid performance coach — weekly program ORCHESTRATOR.\n"
+    "Task: From the athlete profile and the provided 'Available Templates' list, "
+    "build a one-week schedule by SELECTING template_id values ONLY. You do NOT "
+    "invent exercises or full workouts.\n"
     "STRICT RULES:\n"
-    "1. exercise_id MUST be one of the catalog 'id' values. If a movement is not in "
-    "the catalog, set exercise_id to null but still provide a clear name.\n"
-    "2. Catalog 'cns' is the CNS load factor (recovery cost). NEVER schedule two "
-    "consecutive days that both contain multiple exercises with cns >= 1.8. Place "
-    "the heaviest CNS day after a rest day. Respect the athlete's recovery signals "
-    "(zone2 habit, nutrition constraint) when distributing volume.\n"
-    "3. SCHEDULING — training_days lists gym/strength session days (0=Monday ... "
-    "6=Sunday). Output EXACTLY one entry per day in training_days. If wants_running "
-    "is true, also program running on running_days: when split_run_and_gym is true "
-    "and a day appears in BOTH lists, output TWO separate entries for that "
-    "day_of_week (one running-focused, one gym-focused) with distinct templates; "
-    "when split_run_and_gym is false and days overlap, output ONE hybrid entry "
-    "combining run + gym in a single session. Running-only days (in running_days but "
-    "NOT in training_days) get one running entry. Never output rest days.\n"
-    "4. TIMING — Respect gym_preferred_start/end and run_preferred_start/end "
-    "(HH:MM). Mention the athlete's preferred window in each day's focus (e.g. "
-    "'06:00-08:00 arasi ac karnina kosu'). gym_fed_state / run_fed_state: "
-    "'fasted' -> Zone 2 / easy aerobic only, no heavy lifting fasted; 'fed' -> "
-    "athlete eats before session (light snack/meal ok); 'flexible' -> coach decides.\n"
-    "4b. GOAL — strength: prioritize heavy lifts; conditioning: engine/metcon; "
-    "hyrox: race stations + run integration; hybrid: balanced strength+engine; "
-    "crossfit: varied WODs and skill work.\n"
-    "5. DURATION — gym_duration_minutes and run_duration_minutes equal the athlete's "
-    "preferred time WINDOW (end minus start from gym_preferred_* / run_preferred_*). "
-    "Scale total work (including rest) to fit within that window (±10%).\n"
-    "6. Measurement rules are mandatory: measurement 'reps' requires reps; 'time' "
-    "requires duration_seconds; 'distance' requires distance_m.\n"
-    "7. template.workout_type must be one of: hybrid, running, strength, metcon, "
-    "endurance, power, technique, recovery. template.format must be one of: "
-    "standard, circuit, emom, amrap, for_time (amrap/for_time/emom should include "
-    "time_cap_minutes).\n"
-    "7b. HYROX / metcon / hybrid conditioning MUST use format 'circuit' or "
-    "'for_time' — NOT 'standard'. Each station is ONE movement prescription "
-    "(sets=1 per exercise): e.g. 1000m SkiErg, 100m Sled Push, NOT '3 set x 1000m'. "
-    "Use template.rounds for how many times to repeat the full station list.\n"
-    "8. Equipment limits: 'standard_gym' -> no sled, SkiErg or wall ball movements; "
-    "'minimal' -> only bodyweight, dumbbell and running movements.\n"
-    "9. If weekend_conditioning is true, place the hardest conditioning sessions on "
-    "Saturday/Sunday (day_of_week 5-6) when compatible with training_days.\n"
-    "10. Skill gating: do not program olympic lifts above the athlete's "
-    "olympic_proficiency ('none' -> never, 'learning' -> technique work only). Same "
-    "logic for sled_experience.\n"
-    "11. Use the athlete's 5K pace to calibrate running paces and distances.\n"
-    "12. CUSTOM REQUESTS — If custom_program_notes is provided, treat it as "
-    "high-priority programming instructions. Map day-specific requests to the "
-    "correct day_of_week (0=Monday ... 6=Sunday). Honor split preferences "
-    "(e.g. '2 upper hypertrophy, 2 CrossFit metcon, 1 Saturday HYROX sim') while "
-    "still respecting CNS recovery, equipment limits and scheduled training_days. "
-    "If a request conflicts with safety rules, approximate the intent safely.\n"
-    "13. Write coach_summary (2-4 sentences), each day's focus (one sentence) and "
-    "all exercise instructions in TURKISH.\n"
-    "Output: STRICT JSON matching the response schema. No extra commentary."
+    "1. template_id MUST be exactly one of the provided Available Templates ids. "
+    "NEVER invent a template_id not in the list.\n"
+    "2. SCHEDULING — training_days (0=Monday ... 6=Sunday): output one entry per "
+    "scheduled gym day. If wants_running is true, also schedule running_days; when "
+    "split_run_and_gym is true and a day is in BOTH lists, output TWO entries for "
+    "that day_of_week (separate templates). Running-only days get a running-appropriate "
+    "template with modifications if needed.\n"
+    "3. CONSTRAINTS — Respect goal, OMAD/nutrition_constraint, gym/run fed_state, "
+    "equipment limits, olympic_proficiency, sled_experience, custom_program_notes, "
+    "and any Sunday-review style recovery signals in custom_program_notes.\n"
+    "4. MODIFICATIONS — If time is limited, injury, or equipment mismatch: use "
+    "modifications.remove_exercises (exercise_id list) to drop 1-2 movements, or "
+    "modifications.add_exercises (catalog exercise_id only) to swap/add. Keep "
+    "changes minimal (max 2-3 per day).\n"
+    "5. CNS recovery — do not stack the heaviest templates on consecutive days; "
+    "place hard sessions after rest or light days.\n"
+    "6. DURATION — athlete's gym_duration_minutes / run_duration_minutes are their "
+    "time windows; mention preferred times in each day's focus.\n"
+    "7. Write coach_summary (2-4 sentences) and each day's focus (one sentence) "
+    "in TURKISH.\n"
+    "Output: STRICT JSON matching the response schema. No exercise lists — only "
+    "template_id selections and optional modifications."
 )
 
 _DAY_NAMES = [
@@ -298,26 +273,47 @@ async def _generate_structured(
 
 
 async def generate_onboarding_plan(
-    payload: OnboardingPayload, catalog: list[dict]
+    db: AsyncSession,
+    payload: OnboardingPayload,
+    catalog: list[dict],
 ) -> GeneratedWeekPlan:
-    """Atlet profili + egzersiz katalogundan haftalik program uretir.
+    """Atlet profilinden haftalik program: AI sablon secer, backend hydrate eder.
 
-    Katalog deterministik motorun kaynagidir (exercise_id + cns_load_factor);
-    AI yalnizca bu kimlikleri secip gunlere dagitir, hicbir metrik hesaplamaz.
-    Gecici hatalarda en fazla 3 deneme yapilir.
+    Token maliyeti dusurulur: Gemini yalnizca template_id + modifications doner;
+    exercises JSONB veritabanindan deterministik olarak birlestirilir.
     """
-    return await _generate_structured(
+    available_templates = await fetch_coach_template_catalog(db)
+    if not available_templates:
+        raise ValueError(
+            "Sistem sablonlari bulunamadi. coach_workout_templates tablosunu kontrol edin."
+        )
+
+    compact_catalog = [
+        {"id": item["id"], "name": item["name"], "category": item["category"]}
+        for item in catalog
+    ]
+
+    ai_selection = await _generate_structured(
         system_instruction=PLAN_SYSTEM_INSTRUCTION,
         contents=(
             "Athlete profile:\n"
             + payload.model_dump_json(indent=2)
-            + "\n\nExercise catalog (id / name / category / cns load factor):\n"
-            + json.dumps(catalog, ensure_ascii=False)
+            + "\n\nAvailable Templates (select template_id from this list ONLY):\n"
+            + json.dumps(available_templates, ensure_ascii=False, indent=2)
+            + "\n\nExercise catalog (for modifications.add/remove exercise_id only):\n"
+            + json.dumps(compact_catalog, ensure_ascii=False)
         ),
-        response_schema=AiPlanResponse,
-        parse_fn=parse_ai_response,
-        coerce_fn=lambda ai: coerce_ai_plan(ai, payload),
-        max_output_tokens=8192,
+        response_schema=WeeklyPlanAIResponse,
+        parse_fn=parse_weekly_plan_ai,
+        coerce_fn=lambda ai: ai,
+        max_output_tokens=2048,
+    )
+
+    template_ids = list({day.template_id for day in ai_selection.days})
+    templates_by_id = await fetch_coach_templates_by_ids(db, template_ids)
+
+    return hydrate_weekly_plan_from_templates(
+        ai_selection, payload, templates_by_id, catalog
     )
 
 

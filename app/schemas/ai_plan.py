@@ -50,6 +50,35 @@ class AiPlanResponse(BaseModel):
     days: list[AiPlanDay] = Field(default_factory=list)
 
 
+class TemplateModifications(BaseModel):
+    """Sablon uzerinde AI'in onerdigi minimal degisiklikler."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    remove_exercises: list[str] = Field(default_factory=list)
+    add_exercises: list[str] = Field(default_factory=list)
+
+
+class WeeklyPlanAIDay(BaseModel):
+    """Haftalik plan — tek gunluk sablon secimi (Gemini compact output)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    day_of_week: int = Field(0, ge=0, le=6, description="0=Pazartesi ... 6=Pazar")
+    template_id: str = Field(..., min_length=1, max_length=100)
+    focus: str = Field("", max_length=200)
+    modifications: TemplateModifications = Field(default_factory=TemplateModifications)
+
+
+class WeeklyPlanAIResponse(BaseModel):
+    """POST /plan/generate icin kucuk Gemini yanit semasi (sablon secimi)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    coach_summary: str = ""
+    days: list[WeeklyPlanAIDay] = Field(default_factory=list)
+
+
 class AiSingleDayResponse(BaseModel):
     """Tek gunluk idman uretimi icin Gemini semasi."""
 

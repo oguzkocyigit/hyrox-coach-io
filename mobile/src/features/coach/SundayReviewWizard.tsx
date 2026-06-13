@@ -20,8 +20,14 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError } from "@/api/client";
 import { useMe, useSundayReview } from "@/api/hooks";
-import type { SundayReviewResponse } from "@/api/types";
 import { ReviewSummaryCard } from "@/features/coach/ReviewSummaryCard";
+import {
+  buildSundayReviewPayload,
+  isSundayReviewStepValid,
+  MISSED_MAX_LENGTH,
+  RECOVERY_MAX_LENGTH,
+  useSundayReviewStore,
+} from "@/features/coach/sundayReviewStore";
 import { Slider } from "@/features/onboarding/Slider";
 import { Button } from "@/ui/Button";
 import { color, font, radius, space, type } from "@/ui/tokens";
@@ -40,9 +46,6 @@ const RECOVERY_PRESETS = [
   "CNS yorgun — dinlenmeye ihtiyacim var",
 ] as const;
 
-const RECOVERY_MAX_LENGTH = 1500;
-const MISSED_MAX_LENGTH = 2000;
-
 type SundayReviewWizardProps = {
   visible: boolean;
   onClose: () => void;
@@ -59,12 +62,17 @@ export function SundayReviewWizard({
   const insets = useSafeAreaInsets();
   const { data: me } = useMe();
   const sundayReview = useSundayReview();
+  const store = useSundayReviewStore();
+  const {
+    stepIndex,
+    missedReason,
+    nutritionAdherence,
+    recoveryFeeling,
+    reviewResult,
+    set: setStore,
+    reset: resetStore,
+  } = store;
 
-  const [stepIndex, setStepIndex] = useState(0);
-  const [missedReason, setMissedReason] = useState("");
-  const [nutritionAdherence, setNutritionAdherence] = useState(7);
-  const [recoveryFeeling, setRecoveryFeeling] = useState("");
-  const [reviewResult, setReviewResult] = useState<SundayReviewResponse | null>(null);
   const [missedFocused, setMissedFocused] = useState(false);
   const [recoveryFocused, setRecoveryFocused] = useState(false);
 
@@ -78,46 +86,29 @@ export function SundayReviewWizard({
           plannedCount > 0
             ? `Planlanan ${plannedCount} idmandan ${completedCount} tanesini tamamladin.`
             : "Bu hafta planlanmis idman bulunmuyor; yine de haftani degerlendirelim.",
-        valid:
-          missedReason.trim().length > 0 &&
-          missedReason.trim().length <= MISSED_MAX_LENGTH,
+        valid: isSundayReviewStepValid(0, store),
       },
       {
         title: "Beslenme ve toparlanma",
         subtitle: "OMAD / protein hedefin ve vucudunun sinyalleri haftaya yon verir.",
-        valid:
-          nutritionAdherence >= 1 &&
-          nutritionAdherence <= 10 &&
-          recoveryFeeling.trim().length > 0 &&
-          recoveryFeeling.trim().length <= RECOVERY_MAX_LENGTH,
+        valid: isSundayReviewStepValid(1, store),
       },
       {
         title: reviewResult ? "Kocun haftalik degerlendirmesi" : "AI koc analiz ediyor",
         subtitle: reviewResult
           ? "Gelecek hafta icin taktiksel oneriler asagida."
           : "Idman notlarin, RPE ve metriklerin inceleniyor...",
-        valid: reviewResult != null,
+        valid: isSundayReviewStepValid(2, store),
       },
     ],
-    [
-      plannedCount,
-      completedCount,
-      missedReason,
-      nutritionAdherence,
-      recoveryFeeling,
-      reviewResult,
-    ],
+    [plannedCount, completedCount, missedReason, nutritionAdherence, recoveryFeeling, reviewResult],
   );
 
   const step = steps[stepIndex];
   const isLastStep = stepIndex === steps.length - 1;
 
   const resetState = () => {
-    setStepIndex(0);
-    setMissedReason("");
-    setNutritionAdherence(7);
-    setRecoveryFeeling("");
-    setReviewResult(null);
+    resetStore();
     sundayReview.reset();
   };
 
@@ -127,28 +118,24 @@ export function SundayReviewWizard({
   };
 
   const submitReview = () => {
-    sundayReview.mutate(
-      {
-        missed_workouts_reason: missedReason.trim(),
-        nutrition_adherence: nutritionAdherence,
-        recovery_feeling: recoveryFeeling.trim(),
+    const payload = buildSundayReviewPayload(store);
+    if (!payload) return;
+
+    sundayReview.mutate(payload, {
+      onSuccess: (response) => {
+        setStore({ reviewResult: response });
       },
-      {
-        onSuccess: (response) => {
-          setReviewResult(response);
-        },
-      },
-    );
+    });
   };
 
   const handleNext = () => {
     if (stepIndex === 1) {
-      setStepIndex(2);
+      setStore({ stepIndex: 2 });
       submitReview();
       return;
     }
     if (!isLastStep) {
-      setStepIndex((i) => i + 1);
+      setStore({ stepIndex: stepIndex + 1 });
     }
   };
 
@@ -237,7 +224,7 @@ export function SundayReviewWizard({
                   return (
                     <Pressable
                       key={preset.id}
-                      onPress={() => setMissedReason(preset.text)}
+                      onPress={() => setStore({ missedReason: preset.text })}
                       style={[styles.presetPill, active && styles.presetPillActive]}
                     >
                       <Text style={[styles.presetText, active && styles.presetTextActive]}>
@@ -251,7 +238,7 @@ export function SundayReviewWizard({
               <TextInput
                 style={[styles.textArea, missedFocused && styles.textAreaFocused]}
                 value={missedReason}
-                onChangeText={setMissedReason}
+                onChangeText={(text) => setStore({ missedReason: text })}
                 onFocus={() => setMissedFocused(true)}
                 onBlur={() => setMissedFocused(false)}
                 multiline
@@ -278,7 +265,7 @@ export function SundayReviewWizard({
                   min={1}
                   max={10}
                   value={nutritionAdherence}
-                  onChange={setNutritionAdherence}
+                  onChange={(value) => setStore({ nutritionAdherence: value })}
                   formatValue={(v) => `${v} / 10`}
                   minLabel="Dusuk uyum"
                   maxLabel="Mukemmel uyum"
@@ -292,7 +279,7 @@ export function SundayReviewWizard({
                   return (
                     <Pressable
                       key={preset}
-                      onPress={() => setRecoveryFeeling(preset)}
+                      onPress={() => setStore({ recoveryFeeling: preset })}
                       style={[styles.recoveryRow, active && styles.recoveryRowActive]}
                     >
                       <Text style={[styles.recoveryText, active && styles.recoveryTextActive]}>
@@ -309,7 +296,7 @@ export function SundayReviewWizard({
               <TextInput
                 style={[styles.textArea, recoveryFocused && styles.textAreaFocused]}
                 value={recoveryFeeling}
-                onChangeText={setRecoveryFeeling}
+                onChangeText={(text) => setStore({ recoveryFeeling: text })}
                 onFocus={() => setRecoveryFocused(true)}
                 onBlur={() => setRecoveryFocused(false)}
                 multiline
@@ -348,7 +335,7 @@ export function SundayReviewWizard({
               <Button
                 label="Geri"
                 variant="secondary"
-                onPress={() => setStepIndex((i) => i - 1)}
+                onPress={() => setStore({ stepIndex: stepIndex - 1 })}
               />
             ) : null}
 
