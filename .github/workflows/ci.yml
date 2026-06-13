@@ -27,6 +27,7 @@ jobs:
           # Settings'in yuklenebilmesi icin sahte DSN yeterli;
           # birim testleri veritabanina baglanmaz.
           DATABASE_URL: postgresql+asyncpg://ci:ci@localhost:5432/ci
+          PYTEST_UNIT_ONLY: "1"
         run: pytest tests/test_analytics_unit.py tests/test_schemas.py -q
 
   # ----------------------------------------------------------------

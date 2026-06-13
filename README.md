@@ -98,6 +98,7 @@ turetilir; ayni `external_id` ikinci kez gonderilirse sessizce atlanir.
 pip install -r requirements-dev.txt
 pytest                                                    # tam paket (canli dev DB gerekir, ~3 dk)
 pytest tests/test_analytics_unit.py tests/test_schemas.py # sadece birim testleri (~1 sn)
+PYTEST_UNIT_ONLY=1 pytest tests/test_analytics_unit.py tests/test_schemas.py  # DB baglantisi olmadan (CI ile ayni)
 ```
 
 - Auth testleri sahte HS256 token kullanir; Supabase Auth'a bagimlilik yoktur.

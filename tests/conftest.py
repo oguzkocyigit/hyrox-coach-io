@@ -19,6 +19,9 @@ import uuid as uuidlib
 TEST_JWT_SECRET = "pytest-jwt-secret-0123456789abcdef0123456789abcdef"
 os.environ["SUPABASE_JWT_SECRET"] = TEST_JWT_SECRET
 
+# CI birim test job'u: DB fixture'lari devre disi (localhost Postgres yok).
+PYTEST_UNIT_ONLY = os.environ.get("PYTEST_UNIT_ONLY") == "1"
+
 import asyncio  # noqa: E402
 import httpx  # noqa: E402
 import jwt  # noqa: E402
@@ -107,6 +110,8 @@ async def _dispose_engine_after_test():
     'attached to a different loop' hatasi alir.
     """
     yield
+    if PYTEST_UNIT_ONLY:
+        return
     from app.core.database import engine
 
     await engine.dispose()
@@ -116,6 +121,8 @@ async def _dispose_engine_after_test():
 def _cleanup_test_data():
     """Oturum sonunda tum pytest kullanicilarini (CASCADE ile) temizler."""
     yield
+    if PYTEST_UNIT_ONLY:
+        return
 
     async def _clean() -> None:
         from app.core.database import AsyncSessionLocal, engine
