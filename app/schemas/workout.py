@@ -47,7 +47,9 @@ class WorkoutSet(BaseModel):
     reps: int | None = Field(None, gt=0)
     distance_m: float | None = Field(None, gt=0, le=100_000, description="Mesafe (metre)")
     duration_seconds: int | None = Field(None, gt=0, le=24 * 3600, description="Sure (saniye)")
-    rpe: float = Field(..., ge=1.0, le=10.0, description="Set bazli hissedilen zorluk (1.0-10.0)")
+    rpe: float | None = Field(
+        None, ge=1.0, le=10.0, description="Set bazli hissedilen zorluk (1.0-10.0); opsiyonel"
+    )
 
     @model_validator(mode="after")
     def require_measurement_value(self) -> Self:
@@ -82,7 +84,9 @@ class WorkoutCreate(BaseModel):
 
     # user_id payload'da TASINMAZ; dogrulanmis JWT'den (get_current_user) gelir.
     workout_type: str = Field(..., min_length=1, max_length=100, examples=["Full Body", "Zone 2 Run", "Hyrox Sim"])
-    user_reported_rpe: float = Field(..., ge=1.0, le=10.0, description="Idman geneli hissedilen zorluk (1-10)")
+    user_reported_rpe: float = Field(
+        7.0, ge=1.0, le=10.0, description="Idman geneli hissedilen zorluk (1-10); bos birakilirsa 7"
+    )
     duration_minutes: int = Field(..., gt=0)
     date: datetime | None = Field(None, description="Bos birakilirsa sunucu zamani kullanilir")
     exercises: list[ExerciseLog] | None = None

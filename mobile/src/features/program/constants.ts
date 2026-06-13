@@ -84,10 +84,23 @@ export function formatUsesTimeCap(format: WorkoutFormat): boolean {
   return format === "amrap" || format === "for_time" || format === "emom";
 }
 
-/** Egzersiz satiri ozeti: "4 set x 10 @ 22kg · 90s dinlenme" gibi. */
-export function exerciseSummary(e: TemplateExercise): string {
+/** Egzersiz satiri ozeti: format circuit/for_time ise istasyon recetesi gosterilir. */
+export function exerciseSummary(
+  e: TemplateExercise,
+  format: WorkoutFormat = "standard",
+): string {
+  const isStation =
+    format === "circuit" || format === "for_time" || format === "amrap" || format === "emom";
+
   const parts: string[] = [];
-  if (e.measurement === "reps") {
+  if (isStation) {
+    if (e.measurement === "reps") parts.push(`${e.reps ?? 0} tekrar`);
+    else if (e.measurement === "time") parts.push(formatSeconds(e.duration_seconds ?? 0));
+    else {
+      const m = e.distance_m ?? 0;
+      parts.push(m >= 1000 ? `${m / 1000}km` : `${m}m`);
+    }
+  } else if (e.measurement === "reps") {
     parts.push(`${e.sets} set x ${e.reps ?? 0}`);
   } else if (e.measurement === "time") {
     parts.push(`${e.sets} set x ${formatSeconds(e.duration_seconds ?? 0)}`);
@@ -97,7 +110,7 @@ export function exerciseSummary(e: TemplateExercise): string {
   }
   if (e.weight_kg) parts.push(`${e.weight_kg}kg`);
   if (e.rpe != null) parts.push(`RPE ${e.rpe}`);
-  if (e.rest_seconds > 0) parts.push(`${e.rest_seconds}s dinlenme`);
+  if (!isStation && e.rest_seconds > 0) parts.push(`${e.rest_seconds}s dinlenme`);
   return parts.join(" · ");
 }
 

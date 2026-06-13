@@ -12,11 +12,10 @@ import type {
   OlympicProficiency,
   OnboardingPayload,
   SledExperience,
-  TimeOfDay,
-  TimeWindow,
   TrainingGoal,
   Zone2Habit,
 } from "@/api/types";
+import { minutesToTimeString } from "@/features/onboarding/timeUtils";
 
 export type OnboardingAnswers = {
   goal: TrainingGoal | null;
@@ -32,10 +31,11 @@ export type OnboardingAnswers = {
   wantsRunning: boolean;
   runningDays: number[];
   splitRunAndGym: boolean | null;
-  gymTimeOfDay: TimeOfDay | null;
-  runTimeOfDay: TimeOfDay | null;
-  gymTimeWindow: TimeWindow | null;
-  runTimeWindow: TimeWindow | null;
+  /** Gece yarisindan itibaren dakika (orn. 17:00 = 1020) */
+  gymStartMinutes: number;
+  gymEndMinutes: number;
+  runStartMinutes: number;
+  runEndMinutes: number;
   gymFedState: FedState | null;
   runFedState: FedState | null;
   gymDurationMinutes: number;
@@ -55,10 +55,10 @@ const INITIAL: OnboardingAnswers = {
   wantsRunning: true,
   runningDays: [1, 3, 6],
   splitRunAndGym: null,
-  gymTimeOfDay: null,
-  runTimeOfDay: null,
-  gymTimeWindow: null,
-  runTimeWindow: null,
+  gymStartMinutes: 17 * 60,
+  gymEndMinutes: 20 * 60,
+  runStartMinutes: 6 * 60,
+  runEndMinutes: 8 * 60,
   gymFedState: null,
   runFedState: null,
   gymDurationMinutes: 60,
@@ -83,6 +83,10 @@ export function hasOverlappingDays(s: OnboardingAnswers): boolean {
   return s.trainingDays.some((d) => run.has(d));
 }
 
+function isValidTimeRange(start: number, end: number): boolean {
+  return end > start;
+}
+
 /** Gunluk AI uretiminde kullanilabilecek hafif profil (onboarding tamamlanmamis olsa bile). */
 export function buildAthleteContext(s: OnboardingAnswers): AthleteContext {
   return {
@@ -105,20 +109,19 @@ export function buildPayload(s: OnboardingAnswers): OnboardingPayload | null {
     s.weekendConditioning == null ||
     s.nutritionConstraint == null ||
     s.equipment == null ||
-    s.gymTimeOfDay == null ||
-    s.gymTimeWindow == null ||
     s.gymFedState == null
+  ) {
+    return null;
+  }
+  if (
+    !isValidTimeRange(s.gymStartMinutes, s.gymEndMinutes) ||
+    (s.wantsRunning && !isValidTimeRange(s.runStartMinutes, s.runEndMinutes))
   ) {
     return null;
   }
   if (s.trainingDays.length < 2) return null;
   if (s.wantsRunning) {
-    if (
-      s.runningDays.length < 1 ||
-      s.runTimeOfDay == null ||
-      s.runTimeWindow == null ||
-      s.runFedState == null
-    ) {
+    if (s.runningDays.length < 1 || s.runFedState == null) {
       return null;
     }
   }
@@ -131,10 +134,10 @@ export function buildPayload(s: OnboardingAnswers): OnboardingPayload | null {
     wants_running: s.wantsRunning,
     running_days: s.wantsRunning ? s.runningDays : [],
     split_run_and_gym: hasOverlappingDays(s) ? (s.splitRunAndGym ?? true) : false,
-    gym_time_of_day: s.gymTimeOfDay,
-    run_time_of_day: s.wantsRunning ? s.runTimeOfDay! : "flexible",
-    gym_time_window: s.gymTimeWindow,
-    run_time_window: s.wantsRunning ? s.runTimeWindow! : "flexible",
+    gym_preferred_start: minutesToTimeString(s.gymStartMinutes),
+    gym_preferred_end: minutesToTimeString(s.gymEndMinutes),
+    run_preferred_start: minutesToTimeString(s.runStartMinutes),
+    run_preferred_end: minutesToTimeString(s.runEndMinutes),
     gym_fed_state: s.gymFedState,
     run_fed_state: s.wantsRunning ? s.runFedState! : "flexible",
     gym_duration_minutes: s.gymDurationMinutes,

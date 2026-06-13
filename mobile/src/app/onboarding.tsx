@@ -24,6 +24,7 @@ import { useCreateTemplate, useGeneratePlan, useScheduleEntry } from "@/api/hook
 import type { GeneratedWeekPlan } from "@/api/types";
 import { OptionCard } from "@/features/onboarding/OptionCard";
 import { DayPicker } from "@/features/onboarding/DayPicker";
+import { SessionScheduleCard } from "@/features/onboarding/SessionScheduleCard";
 import { Slider } from "@/features/onboarding/Slider";
 import {
   EQUIPMENT_OPTIONS,
@@ -33,8 +34,6 @@ import {
   OLYMPIC_OPTIONS,
   SLED_OPTIONS,
   SPLIT_SESSION_OPTIONS,
-  TIME_OF_DAY_OPTIONS,
-  TIME_WINDOW_OPTIONS,
   WEEKEND_OPTIONS,
   ZONE2_OPTIONS,
   formatPace,
@@ -192,13 +191,11 @@ export default function OnboardingScreen() {
     },
     {
       title: "Zamanlama",
-      subtitle: "Salon ve kosu icin gun ici saat tercihlerini belirle.",
+      subtitle: "Salon ve kosu icin tercih ettigin saat araligi ve sure.",
       valid:
-        store.gymTimeOfDay != null &&
-        store.gymTimeWindow != null &&
+        store.gymEndMinutes > store.gymStartMinutes &&
         (!hasOverlappingDays(store) || store.splitRunAndGym != null) &&
-        (!store.wantsRunning ||
-          (store.runTimeOfDay != null && store.runTimeWindow != null)),
+        (!store.wantsRunning || store.runEndMinutes > store.runStartMinutes),
       content: (
         <View style={styles.options}>
           {hasOverlappingDays(store) ? (
@@ -216,71 +213,54 @@ export default function OnboardingScreen() {
               ))}
             </>
           ) : null}
-          <Text style={styles.groupLabel}>SALON IDMANI — GUN ICINDE NE ZAMAN?</Text>
-          {TIME_OF_DAY_OPTIONS.map((o) => (
-            <OptionCard
-              key={o.value}
-              {...o}
-              selected={store.gymTimeOfDay === o.value}
-              onPress={() => store.set({ gymTimeOfDay: o.value })}
-            />
-          ))}
-          <Text style={styles.groupLabel}>SALON — SAAT ARALIGI</Text>
-          {TIME_WINDOW_OPTIONS.map((o) => (
-            <OptionCard
-              key={o.value}
-              {...o}
-              selected={store.gymTimeWindow === o.value}
-              onPress={() => store.set({ gymTimeWindow: o.value })}
-            />
-          ))}
+          <SessionScheduleCard
+            title="Salon idmani"
+            icon="barbell-outline"
+            startMinutes={store.gymStartMinutes}
+            endMinutes={store.gymEndMinutes}
+            durationMinutes={store.gymDurationMinutes}
+            durationMin={30}
+            durationMax={120}
+            onStartChange={(gymStartMinutes) =>
+              store.set({
+                gymStartMinutes,
+                gymEndMinutes: Math.max(gymStartMinutes + 30, store.gymEndMinutes),
+              })
+            }
+            onEndChange={(gymEndMinutes) => store.set({ gymEndMinutes })}
+            onDurationChange={(gymDurationMinutes) => store.set({ gymDurationMinutes })}
+          />
           {store.wantsRunning ? (
-            <>
-              <Text style={styles.groupLabel}>KOSU — GUN ICINDE NE ZAMAN?</Text>
-              {TIME_OF_DAY_OPTIONS.map((o) => (
-                <OptionCard
-                  key={`run-${o.value}`}
-                  {...o}
-                  selected={store.runTimeOfDay === o.value}
-                  onPress={() => store.set({ runTimeOfDay: o.value })}
-                />
-              ))}
-              <Text style={styles.groupLabel}>KOSU — SAAT ARALIGI</Text>
-              {TIME_WINDOW_OPTIONS.map((o) => (
-                <OptionCard
-                  key={`run-win-${o.value}`}
-                  {...o}
-                  selected={store.runTimeWindow === o.value}
-                  onPress={() => store.set({ runTimeWindow: o.value })}
-                />
-              ))}
-            </>
+            <SessionScheduleCard
+              title="Kosu"
+              icon="footsteps-outline"
+              startMinutes={store.runStartMinutes}
+              endMinutes={store.runEndMinutes}
+              durationMinutes={store.runDurationMinutes}
+              durationMin={20}
+              durationMax={90}
+              onStartChange={(runStartMinutes) =>
+                store.set({
+                  runStartMinutes,
+                  runEndMinutes: Math.max(runStartMinutes + 30, store.runEndMinutes),
+                })
+              }
+              onEndChange={(runEndMinutes) => store.set({ runEndMinutes })}
+              onDurationChange={(runDurationMinutes) => store.set({ runDurationMinutes })}
+            />
           ) : null}
         </View>
       ),
     },
     {
-      title: "Seans detaylari",
-      subtitle: "Sure, beslenme durumu ve idman uzunlugu.",
+      title: "Beslenme tercihleri",
+      subtitle: "Idmandan once yemek yiyip yemedigini belirt.",
       valid:
         store.gymFedState != null &&
         (!store.wantsRunning || store.runFedState != null),
       content: (
         <View style={styles.options}>
-          <View style={styles.sliderCard}>
-            <Text style={styles.sliderTitle}>SALON IDMAN SURESI</Text>
-            <Slider
-              min={30}
-              max={120}
-              step={5}
-              value={store.gymDurationMinutes}
-              onChange={(v) => store.set({ gymDurationMinutes: v })}
-              formatValue={(v) => `${v} dk`}
-              minLabel="30 dk"
-              maxLabel="120 dk"
-            />
-          </View>
-          <Text style={styles.groupLabel}>SALON — AC MI TOK MU?</Text>
+          <Text style={styles.groupLabel}>SALON — IDMAN ONCESI</Text>
           {FED_STATE_OPTIONS.map((o) => (
             <OptionCard
               key={`gym-fed-${o.value}`}
@@ -291,20 +271,7 @@ export default function OnboardingScreen() {
           ))}
           {store.wantsRunning ? (
             <>
-              <View style={styles.sliderCard}>
-                <Text style={styles.sliderTitle}>KOSU SURESI</Text>
-                <Slider
-                  min={20}
-                  max={90}
-                  step={5}
-                  value={store.runDurationMinutes}
-                  onChange={(v) => store.set({ runDurationMinutes: v })}
-                  formatValue={(v) => `${v} dk`}
-                  minLabel="20 dk"
-                  maxLabel="90 dk"
-                />
-              </View>
-              <Text style={styles.groupLabel}>KOSU — AC MI TOK MU?</Text>
+              <Text style={styles.groupLabel}>KOSU — IDMAN ONCESI</Text>
               {FED_STATE_OPTIONS.map((o) => (
                 <OptionCard
                   key={`run-fed-${o.value}`}

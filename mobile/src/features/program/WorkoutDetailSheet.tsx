@@ -15,12 +15,15 @@ import {
   formatUsesRounds,
   typeMeta,
 } from "@/features/program/constants";
+import { Button } from "@/ui/Button";
 import { color, radius, space, type } from "@/ui/tokens";
 
 type WorkoutDetailSheetProps = {
   visible: boolean;
   template: WorkoutTemplate | null;
   onClose: () => void;
+  /** Canli idman oturumunu baslat */
+  onStart?: (template: WorkoutTemplate) => void;
   /** Verilirse sag ustte "Duzenle" gosterilir */
   onEdit?: (template: WorkoutTemplate) => void;
   /** Verilirse "AI ile Degistir" gosterilir */
@@ -31,6 +34,7 @@ export function WorkoutDetailSheet({
   visible,
   template,
   onClose,
+  onStart,
   onEdit,
   onModifyAI,
 }: WorkoutDetailSheetProps) {
@@ -114,7 +118,7 @@ export function WorkoutDetailSheet({
               </View>
               <View style={styles.exerciseTexts}>
                 <Text style={styles.exerciseName}>{exercise.name}</Text>
-                <Text style={styles.exerciseMeta}>{exerciseSummary(exercise)}</Text>
+                <Text style={styles.exerciseMeta}>{exerciseSummary(exercise, template.format)}</Text>
                 {exercise.instructions ? (
                   <Text style={styles.instructions}>{exercise.instructions}</Text>
                 ) : null}
@@ -127,6 +131,12 @@ export function WorkoutDetailSheet({
               <Text style={styles.sectionLabel}>Notlar</Text>
               <Text style={styles.notes}>{template.notes}</Text>
             </>
+          ) : null}
+
+          {onStart ? (
+            <View style={styles.startFooter}>
+              <Button label="Idmani Baslat" onPress={() => onStart(template)} />
+            </View>
           ) : null}
         </ScrollView>
       </View>
@@ -254,5 +264,8 @@ const styles = StyleSheet.create({
   notes: {
     ...type.body,
     color: color.text.secondary,
+  },
+  startFooter: {
+    marginTop: space.lg,
   },
 });

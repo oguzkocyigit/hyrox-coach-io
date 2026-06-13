@@ -12,17 +12,20 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.schemas.plans import TemplateExercise, WorkoutTemplateCreate
 
-TrainingGoal = Literal["strength", "conditioning", "hybrid"]
+TrainingGoal = Literal["strength", "conditioning", "hyrox", "hybrid", "crossfit"]
 Zone2Habit = Literal["none", "sometimes", "regular"]
 SledExperience = Literal["none", "some", "confident"]
 OlympicProficiency = Literal["none", "learning", "proficient"]
 NutritionConstraint = Literal["none", "omad", "intermittent_fasting", "low_carb"]
 EquipmentLevel = Literal["full_box", "standard_gym", "minimal"]
-TimeOfDay = Literal["morning", "afternoon", "evening", "flexible"]
-TimeWindow = Literal[
-    "05_08", "08_11", "11_14", "14_17", "17_20", "20_22", "flexible"
-]
 FedState = Literal["fed", "fasted", "flexible"]
+
+_HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"
+
+
+def _minutes_from_hhmm(value: str) -> int:
+    hour, minute = value.split(":")
+    return int(hour) * 60 + int(minute)
 
 
 class OnboardingPayload(BaseModel):
@@ -46,10 +49,10 @@ class OnboardingPayload(BaseModel):
         ...,
         description="Ayni gunde kosu + salon ayri seans mi",
     )
-    gym_time_of_day: TimeOfDay
-    run_time_of_day: TimeOfDay
-    gym_time_window: TimeWindow
-    run_time_window: TimeWindow
+    gym_preferred_start: str = Field(..., pattern=_HHMM, description="Salon baslangic saati HH:MM")
+    gym_preferred_end: str = Field(..., pattern=_HHMM, description="Salon bitis saati HH:MM")
+    run_preferred_start: str = Field(..., pattern=_HHMM, description="Kosu baslangic saati HH:MM")
+    run_preferred_end: str = Field(..., pattern=_HHMM, description="Kosu bitis saati HH:MM")
     gym_fed_state: FedState
     run_fed_state: FedState
     gym_duration_minutes: int = Field(..., ge=30, le=120)
@@ -84,10 +87,14 @@ class OnboardingPayload(BaseModel):
             raise ValueError("Kosu secildiyse en az bir kosu gunu gerekli")
         if not self.wants_running and self.running_days:
             raise ValueError("Kosu secilmediyse running_days bos olmali")
-        overlap = set(self.training_days) & set(self.running_days)
-        if overlap and not self.split_run_and_gym:
-            # Tek blok: overlap kabul edilebilir (hibrit gun)
-            pass
+        if _minutes_from_hhmm(self.gym_preferred_end) <= _minutes_from_hhmm(
+            self.gym_preferred_start
+        ):
+            raise ValueError("Salon bitis saati baslangictan sonra olmali")
+        if self.wants_running and _minutes_from_hhmm(self.run_preferred_end) <= _minutes_from_hhmm(
+            self.run_preferred_start
+        ):
+            raise ValueError("Kosu bitis saati baslangictan sonra olmali")
         return self
 
 

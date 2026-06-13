@@ -40,6 +40,7 @@ import { WorkoutBuilderSheet } from "@/features/program/WorkoutBuilderSheet";
 import { WorkoutDetailSheet } from "@/features/program/WorkoutDetailSheet";
 import { WorkoutLibrarySheet } from "@/features/program/WorkoutLibrarySheet";
 import { WorkoutModifyAISheet } from "@/features/program/WorkoutModifyAISheet";
+import { WorkoutSessionSheet } from "@/features/program/WorkoutSessionSheet";
 import { Screen } from "@/ui/Screen";
 import { color, radius, space, type } from "@/ui/tokens";
 
@@ -89,6 +90,7 @@ export default function ProgramScreen() {
   const [libraryVisible, setLibraryVisible] = useState(false);
   const [dayAiVisible, setDayAiVisible] = useState(false);
   const [modifyEntry, setModifyEntry] = useState<PlanEntry | null>(null);
+  const [sessionEntry, setSessionEntry] = useState<PlanEntry | null>(null);
 
   const scheduleEntry = useScheduleEntry();
   const createTemplate = useCreateTemplate();
@@ -401,6 +403,12 @@ export default function ProgramScreen() {
         visible={detailEntry != null}
         template={detailEntry?.template ?? null}
         onClose={() => setDetailEntry(null)}
+        onStart={() => {
+          if (detailEntry) {
+            setSessionEntry(detailEntry);
+            setDetailEntry(null);
+          }
+        }}
         onModifyAI={() => {
           if (detailEntry) {
             setModifyEntry(detailEntry);
@@ -419,6 +427,14 @@ export default function ProgramScreen() {
         template={modifyEntry?.template ?? null}
         onClose={() => setModifyEntry(null)}
         onModified={(result) => void handleWorkoutModified(result)}
+      />
+
+      <WorkoutSessionSheet
+        visible={sessionEntry != null}
+        template={sessionEntry?.template ?? null}
+        planEntryId={sessionEntry?.entry_id ?? null}
+        onClose={() => setSessionEntry(null)}
+        onCompleted={() => void refetch()}
       />
     </Screen>
   );

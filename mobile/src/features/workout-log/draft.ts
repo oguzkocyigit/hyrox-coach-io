@@ -110,7 +110,7 @@ export function buildPayload(args: {
           message: `${draft.exercise.name}: ${i + 1}. set icin ${valueLabels[draft.measurement]} gir.`,
         };
       }
-      if (setRpe === null || setRpe < 1 || setRpe > 10) {
+      if (setRpe !== null && (setRpe < 1 || setRpe > 10)) {
         return {
           ok: false,
           message: `${draft.exercise.name}: ${i + 1}. set icin RPE 1-10 arasi olmali.`,
@@ -119,7 +119,7 @@ export function buildPayload(args: {
       const set: WorkoutSet = {
         measurement: draft.measurement,
         weight_kg: weight,
-        rpe: setRpe,
+        rpe: setRpe ?? undefined,
       };
       if (draft.measurement === "reps") set.reps = Math.round(value);
       else if (draft.measurement === "distance") set.distance_m = value;

@@ -67,7 +67,7 @@ export interface WorkoutSet {
   reps?: number | null;
   distance_m?: number | null;
   duration_seconds?: number | null;
-  rpe: number; // 1.0 - 10.0
+  rpe?: number | null;
 }
 
 export interface ExerciseLog {
@@ -269,7 +269,12 @@ export interface WeekPlanResponse {
 // ---------------------------------------------------------------
 // AI Onboarding Wizard (POST /plan/generate)
 // ---------------------------------------------------------------
-export type TrainingGoal = "strength" | "conditioning" | "hybrid";
+export type TrainingGoal =
+  | "strength"
+  | "conditioning"
+  | "hyrox"
+  | "hybrid"
+  | "crossfit";
 export type Zone2Habit = "none" | "sometimes" | "regular";
 export type SledExperience = "none" | "some" | "confident";
 export type OlympicProficiency = "none" | "learning" | "proficient";
@@ -279,15 +284,6 @@ export type NutritionConstraint =
   | "intermittent_fasting"
   | "low_carb";
 export type EquipmentLevel = "full_box" | "standard_gym" | "minimal";
-export type TimeOfDay = "morning" | "afternoon" | "evening" | "flexible";
-export type TimeWindow =
-  | "05_08"
-  | "08_11"
-  | "11_14"
-  | "14_17"
-  | "17_20"
-  | "20_22"
-  | "flexible";
 export type FedState = "fed" | "fasted" | "flexible";
 
 export interface OnboardingPayload {
@@ -300,10 +296,10 @@ export interface OnboardingPayload {
   running_days: number[];
   /** Ayni gunde kosu + salon ayri seans mi */
   split_run_and_gym: boolean;
-  gym_time_of_day: TimeOfDay;
-  run_time_of_day: TimeOfDay;
-  gym_time_window: TimeWindow;
-  run_time_window: TimeWindow;
+  gym_preferred_start: string;
+  gym_preferred_end: string;
+  run_preferred_start: string;
+  run_preferred_end: string;
   gym_fed_state: FedState;
   run_fed_state: FedState;
   gym_duration_minutes: number;

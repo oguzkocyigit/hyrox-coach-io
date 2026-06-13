@@ -22,6 +22,10 @@ class TestWorkoutSet:
     def test_rpe_boundaries_accepted(self, rpe):
         assert WorkoutSet(**{**_VALID_SET, "rpe": rpe}).rpe == rpe
 
+    def test_rpe_optional(self):
+        s = WorkoutSet(weight_kg=0, reps=10)
+        assert s.rpe is None
+
     def test_zero_reps_rejected(self):
         with pytest.raises(ValidationError):
             WorkoutSet(**{**_VALID_SET, "reps": 0})

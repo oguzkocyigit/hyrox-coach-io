@@ -17,6 +17,7 @@ import {
   typeMeta,
 } from "@/features/program/constants";
 import { WorkoutDetailSheet } from "@/features/program/WorkoutDetailSheet";
+import { WorkoutSessionSheet } from "@/features/program/WorkoutSessionSheet";
 import { color, radius, space, type } from "@/ui/tokens";
 
 const PREVIEW_COUNT = 5;
@@ -38,6 +39,7 @@ export function TodaysWorkoutCard() {
   const { data: plan } = useWeekPlan(mondayIso());
   const setCompletion = useSetEntryCompletion();
   const [detailEntry, setDetailEntry] = useState<PlanEntry | null>(null);
+  const [sessionEntry, setSessionEntry] = useState<PlanEntry | null>(null);
 
   const todayIso = toIsoDate(new Date());
   const todaysEntries = (plan?.entries ?? []).filter(
@@ -89,7 +91,9 @@ export function TodaysWorkoutCard() {
             <Text style={styles.previewIndex}>{index + 1}.</Text>
             <View style={styles.previewTexts}>
               <Text style={styles.previewName}>{exercise.name}</Text>
-              <Text style={styles.previewMeta}>{exerciseSummary(exercise)}</Text>
+              <Text style={styles.previewMeta}>
+                {exerciseSummary(exercise, entry.template.format)}
+              </Text>
             </View>
           </View>
         ))}
@@ -131,6 +135,19 @@ export function TodaysWorkoutCard() {
         visible={detailEntry != null}
         template={detailEntry?.template ?? null}
         onClose={() => setDetailEntry(null)}
+        onStart={() => {
+          if (detailEntry) {
+            setSessionEntry(detailEntry);
+            setDetailEntry(null);
+          }
+        }}
+      />
+
+      <WorkoutSessionSheet
+        visible={sessionEntry != null}
+        template={sessionEntry?.template ?? null}
+        planEntryId={sessionEntry?.entry_id ?? null}
+        onClose={() => setSessionEntry(null)}
       />
     </View>
   );

@@ -68,7 +68,11 @@ def _normalize_measurement(raw: str) -> str:
     return key if key in _VALID_MEASUREMENTS else "reps"
 
 
-def _sanitize_exercise(raw: dict) -> TemplateExercise | None:
+def _sanitize_exercise(
+    raw: dict,
+    *,
+    default_sets: int = 3,
+) -> TemplateExercise | None:
     """Eksik olcum alanlarini doldurur; hala gecersizse None."""
     raw = dict(raw)
     raw["measurement"] = _normalize_measurement(str(raw.get("measurement", "reps")))
@@ -79,7 +83,7 @@ def _sanitize_exercise(raw: dict) -> TemplateExercise | None:
         raw["duration_seconds"] = 60
     if measurement == "distance" and not raw.get("distance_m"):
         raw["distance_m"] = 400
-    raw.setdefault("sets", 3)
+    raw.setdefault("sets", default_sets)
     raw.setdefault("rest_seconds", 0)
     raw.setdefault("rpe", 7.0)
     if not raw.get("name"):
@@ -88,6 +92,54 @@ def _sanitize_exercise(raw: dict) -> TemplateExercise | None:
         return TemplateExercise.model_validate(raw)
     except ValidationError:
         return None
+
+
+def _default_sets_for_format(workout_format: str) -> int:
+    """Circuit/for_time/amrap istasyonlarinda tek gecis (sets=1)."""
+    if workout_format in {"circuit", "for_time", "amrap", "emom"}:
+        return 1
+    return 3
+
+
+def _normalize_station_structure(
+    template: WorkoutTemplateCreate,
+) -> WorkoutTemplateCreate:
+    """Metcon/HYROX ciktisini istasyon mantigina cevirir (set x tekrar degil)."""
+    conditioning_types = {"metcon", "hybrid", "endurance"}
+    station_formats = {"circuit", "for_time", "amrap"}
+
+    workout_type = template.workout_type
+    workout_format = template.format
+
+    if workout_type in conditioning_types and workout_format == "standard":
+        if len(template.exercises) >= 3:
+            template = template.model_copy(update={"format": "circuit"})
+            workout_format = "circuit"
+
+    if workout_format not in station_formats:
+        return template
+
+    normalized: list[TemplateExercise] = []
+    for exercise in template.exercises:
+        normalized.append(
+            exercise.model_copy(
+                update={
+                    "sets": 1,
+                    "rest_seconds": 0,
+                }
+            )
+        )
+
+    rounds = template.rounds
+    if workout_format in {"circuit", "amrap"} and rounds <= 1:
+        rounds = 3
+
+    return template.model_copy(
+        update={
+            "exercises": normalized,
+            "rounds": rounds,
+        }
+    )
 
 
 def parse_ai_response(raw_text: str) -> AiPlanResponse:
@@ -236,9 +288,11 @@ def _coerce_template_from_ai(
     *,
     target_minutes: int | None = None,
 ) -> WorkoutTemplateCreate | None:
+    workout_format = _normalize_format(raw_template.format)
+    default_sets = _default_sets_for_format(workout_format)
     exercises: list[TemplateExercise] = []
     for ex in raw_template.exercises:
-        sanitized = _sanitize_exercise(ex.model_dump())
+        sanitized = _sanitize_exercise(ex.model_dump(), default_sets=default_sets)
         if sanitized:
             exercises.append(sanitized)
     if not exercises:
@@ -247,12 +301,13 @@ def _coerce_template_from_ai(
     template = WorkoutTemplateCreate(
         name=(raw_template.name or "Idman")[:120],
         workout_type=_normalize_workout_type(raw_template.workout_type),  # type: ignore[arg-type]
-        format=_normalize_format(raw_template.format),  # type: ignore[arg-type]
+        format=workout_format,  # type: ignore[arg-type]
         rounds=max(1, raw_template.rounds or 1),
         time_cap_minutes=raw_template.time_cap_minutes,
         notes=raw_template.notes,
         exercises=exercises,
     )
+    template = _normalize_station_structure(template)
     if target_minutes:
         return scale_template_to_duration(template, target_minutes)
     return template
