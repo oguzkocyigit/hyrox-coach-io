@@ -14,6 +14,8 @@ import { api } from "@/api/client";
 import type {
   DayWorkoutGeneratePayload,
   Exercise,
+  ExerciseSuggestPayload,
+  ExerciseSuggestResponse,
   GeneratedDayWorkout,
   GeneratedWeekPlan,
   HealthSyncRequest,
@@ -233,6 +235,14 @@ export function useModifyWorkout() {
   return useMutation({
     mutationFn: (payload: WorkoutModifyPayload) =>
       api.post<ModifiedWorkoutResponse>("/api/v1/plan/modify-workout", payload),
+  });
+}
+
+/** Idman taslagina tek egzersiz oner (append / replace, tier limitli). */
+export function useSuggestExercise() {
+  return useMutation({
+    mutationFn: (payload: ExerciseSuggestPayload) =>
+      api.post<ExerciseSuggestResponse>("/api/v1/plan/suggest-exercise", payload),
   });
 }
 

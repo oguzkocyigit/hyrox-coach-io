@@ -369,6 +369,34 @@ export interface ModifiedWorkoutResponse {
   template: WorkoutTemplateCreate;
 }
 
+export interface WeeklyDayContext {
+  day_of_week: number;
+  day_name: string;
+  workout_name: string;
+  exercise_names: string[];
+}
+
+export type SuggestMode = "append" | "replace";
+
+export interface ExerciseSuggestPayload {
+  mode: SuggestMode;
+  workout_name: string;
+  workout_type: string;
+  format: WorkoutFormat;
+  rounds: number;
+  time_cap_minutes?: number | null;
+  existing_exercises: TemplateExercise[];
+  replace_index?: number | null;
+  weekly_context?: WeeklyDayContext[];
+  day_of_week?: number | null;
+  athlete_context?: AthleteContext | null;
+}
+
+export interface ExerciseSuggestResponse {
+  coach_note: string;
+  exercise: TemplateExercise;
+}
+
 // ---------------------------------------------------------------
 // Wearable senkron (POST /sync/health)
 // ---------------------------------------------------------------

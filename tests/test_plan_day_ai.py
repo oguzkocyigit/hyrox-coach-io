@@ -115,3 +115,51 @@ class TestPlanDayAI:
         body = r.json()
         assert "Omuz" in body["coach_note"]
         assert body["template"]["name"] == "Gunluk Kuvvet (Revize)"
+
+    async def test_suggest_exercise_append(self, client, db_session, monkeypatch):
+        from app.schemas.onboarding import ExerciseSuggestResponse
+
+        async def _fake(_payload, _catalog):
+            return ExerciseSuggestResponse(
+                coach_note="Clean sonrasi hafif pull mantikli.",
+                exercise=TemplateExercise(
+                    name="Barbell Row",
+                    exercise_id="barbell_row",
+                    measurement="reps",
+                    sets=4,
+                    reps=8,
+                    rpe=7.0,
+                ),
+            )
+
+        monkeypatch.setattr(
+            "app.api.v1.endpoints.plans.suggest_exercise_with_ai", _fake
+        )
+        user_id = new_user_id()
+        await create_profile(db_session, user_id, tier="premium")
+
+        r = await client.post(
+            "/api/v1/plan/suggest-exercise",
+            json={
+                "mode": "append",
+                "workout_name": "Upper Strength",
+                "workout_type": "strength",
+                "format": "standard",
+                "rounds": 1,
+                "existing_exercises": [
+                    {
+                        "name": "Clean & Jerk",
+                        "measurement": "reps",
+                        "sets": 1,
+                        "reps": 10,
+                        "rest_seconds": 0,
+                        "rpe": 8,
+                    }
+                ],
+            },
+            headers=auth_headers(user_id),
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["exercise"]["name"] == "Barbell Row"
+        assert "pull" in body["coach_note"].lower() or "Barbell" in body["coach_note"]

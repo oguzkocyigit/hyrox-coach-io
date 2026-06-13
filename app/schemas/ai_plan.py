@@ -19,6 +19,7 @@ class AiPlanExercise(BaseModel):
     distance_m: float | None = None
     duration_seconds: int | None = None
     rest_seconds: int = 60
+    rpe: float = 7.0
     instructions: str | None = None
 
 
@@ -66,3 +67,12 @@ class AiModifyResponse(BaseModel):
     focus: str = ""
     coach_note: str = ""
     template: AiPlanTemplate = Field(default_factory=AiPlanTemplate)
+
+
+class AiSuggestExerciseResponse(BaseModel):
+    """Tek egzersiz onerisi (append / replace)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    coach_note: str = ""
+    exercise: AiPlanExercise = Field(default_factory=AiPlanExercise)

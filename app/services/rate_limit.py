@@ -31,12 +31,14 @@ ANALYSIS_ENDPOINT = "/api/v1/analysis/weekly"
 PLAN_GENERATE_ENDPOINT = "/api/v1/plan/generate"
 PLAN_GENERATE_DAY_ENDPOINT = "/api/v1/plan/generate-day"
 PLAN_MODIFY_ENDPOINT = "/api/v1/plan/modify-workout"
+PLAN_SUGGEST_EXERCISE_ENDPOINT = "/api/v1/plan/suggest-exercise"
 
 # Tum plan AI uretimleri ortak kota havuzunu paylasir.
 PLAN_AI_ENDPOINTS = (
     PLAN_GENERATE_ENDPOINT,
     PLAN_GENERATE_DAY_ENDPOINT,
     PLAN_MODIFY_ENDPOINT,
+    PLAN_SUGGEST_EXERCISE_ENDPOINT,
 )
 
 # Tier -> (limit, SQL pencere kosulu)

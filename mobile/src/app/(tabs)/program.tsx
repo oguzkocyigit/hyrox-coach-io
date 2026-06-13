@@ -376,6 +376,8 @@ export default function ProgramScreen() {
       <WorkoutBuilderSheet
         visible={builderVisible}
         template={builderTemplate}
+        weekEntries={plan?.entries ?? []}
+        scheduledDate={pendingScheduleDate}
         onClose={() => {
           setBuilderVisible(false);
           setPendingScheduleDate(null);

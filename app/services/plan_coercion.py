@@ -10,9 +10,11 @@ from app.schemas.ai_plan import (
     AiModifyResponse,
     AiPlanResponse,
     AiSingleDayResponse,
+    AiSuggestExerciseResponse,
 )
 from app.schemas.onboarding import (
     AthleteContext,
+    ExerciseSuggestResponse,
     GeneratedDay,
     GeneratedDayWorkout,
     GeneratedWeekPlan,
@@ -114,6 +116,17 @@ def parse_ai_modify(raw_text: str) -> AiModifyResponse:
         logger.warning("AiModifyResponse strict parse failed, trying json.loads fallback")
         data = json.loads(raw_text)
         return AiModifyResponse.model_validate(data)
+
+
+def parse_ai_suggest_exercise(raw_text: str) -> AiSuggestExerciseResponse:
+    try:
+        return AiSuggestExerciseResponse.model_validate_json(raw_text)
+    except ValidationError:
+        logger.warning(
+            "AiSuggestExerciseResponse strict parse failed, trying json.loads fallback"
+        )
+        data = json.loads(raw_text)
+        return AiSuggestExerciseResponse.model_validate(data)
 
 
 def estimate_template_minutes(
@@ -310,3 +323,12 @@ def coerce_ai_modify(
         coach_note=(ai.coach_note or "").strip()[:500],
         template=template,
     )
+
+
+def coerce_ai_suggest_exercise(ai: AiSuggestExerciseResponse) -> ExerciseSuggestResponse:
+    raw = ai.exercise.model_dump()
+    exercise = _sanitize_exercise(raw)
+    if not exercise:
+        raise ValueError("AI gecerli egzersiz oneremedi.")
+    note = (ai.coach_note or "").strip() or "Program akisina uygun hareket."
+    return ExerciseSuggestResponse(coach_note=note[:500], exercise=exercise)

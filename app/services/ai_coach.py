@@ -21,10 +21,13 @@ from app.schemas.ai_plan import (
     AiModifyResponse,
     AiPlanResponse,
     AiSingleDayResponse,
+    AiSuggestExerciseResponse,
 )
 from app.schemas.analysis import CoachAnalysis, WeeklyMetrics
 from app.schemas.onboarding import (
     DayWorkoutGeneratePayload,
+    ExerciseSuggestPayload,
+    ExerciseSuggestResponse,
     GeneratedDayWorkout,
     GeneratedWeekPlan,
     ModifiedWorkoutResponse,
@@ -35,9 +38,11 @@ from app.services.plan_coercion import (
     coerce_ai_modify,
     coerce_ai_plan,
     coerce_ai_single_day,
+    coerce_ai_suggest_exercise,
     parse_ai_modify,
     parse_ai_response,
     parse_ai_single_day,
+    parse_ai_suggest_exercise,
 )
 
 # Blueprint'teki rol tanimi (sayfa sonu prompt spesifikasyonu)
@@ -184,6 +189,30 @@ MODIFY_WORKOUT_SYSTEM_INSTRUCTION = (
     "Output: STRICT JSON matching the response schema. No extra commentary."
 )
 
+SUGGEST_EXERCISE_SYSTEM_INSTRUCTION = (
+    "Role: Elite hybrid training coach picking ONE next exercise for a workout.\n"
+    "Task: Suggest exactly ONE exercise that fits the current session, the "
+    "movement before it (if any), and the athlete's weekly plan context.\n"
+    "STRICT RULES:\n"
+    "1. exercise_id MUST be from catalog 'id'. Unknown: exercise_id null, clear name.\n"
+    "2. mode=append: pick the logical NEXT movement — alternate push/pull, "
+    "avoid duplicate names or exercise_ids already in existing_exercises, "
+    "respect CNS (do not stack multiple cns>=1.8 back-to-back unless metcon).\n"
+    "3. mode=replace: substitute the exercise at replace_index with a similar "
+    "role but better fit (variation, injury-friendly swap, or progression).\n"
+    "4. weekly_context: avoid overloading muscle groups already hit heavily "
+    "on other days this week.\n"
+    "5. Match workout_type/format (circuit -> concise stations, strength -> "
+    "sets/reps with rest, running -> distance/time).\n"
+    "6. Include realistic sets, reps/distance/time, rest_seconds, rpe (1-10), "
+    "optional weight_kg and brief instructions.\n"
+    "7. Measurement rules: reps needs reps; time needs duration_seconds; "
+    "distance needs distance_m.\n"
+    "8. Equipment/skill limits from athlete_context.\n"
+    "9. coach_note: 1 short Turkish sentence explaining WHY this exercise.\n"
+    "Output: STRICT JSON matching the response schema. No extra commentary."
+)
+
 
 async def _generate_structured(
     *,
@@ -309,4 +338,44 @@ async def modify_workout_with_ai(
             target_minutes=target,
             fallback_name=fallback_name,
         ),
+    )
+
+
+async def suggest_exercise_with_ai(
+    payload: ExerciseSuggestPayload, catalog: list[dict]
+) -> ExerciseSuggestResponse:
+    """Mevcut idman taslagina tek egzersiz onerir (ekle veya degistir)."""
+    day_name = (
+        _DAY_NAMES[payload.day_of_week]
+        if payload.day_of_week is not None
+        else None
+    )
+    request = {
+        "mode": payload.mode,
+        "replace_index": payload.replace_index,
+        "workout_name": payload.workout_name,
+        "workout_type": payload.workout_type,
+        "format": payload.format,
+        "rounds": payload.rounds,
+        "time_cap_minutes": payload.time_cap_minutes,
+        "day_of_week": payload.day_of_week,
+        "day_name": day_name,
+        "existing_exercises": [e.model_dump() for e in payload.existing_exercises],
+        "weekly_context": [w.model_dump() for w in payload.weekly_context],
+        "athlete_context": (
+            payload.athlete_context.model_dump() if payload.athlete_context else {}
+        ),
+    }
+    return await _generate_structured(
+        system_instruction=SUGGEST_EXERCISE_SYSTEM_INSTRUCTION,
+        contents=(
+            "Exercise suggestion request:\n"
+            + json.dumps(request, ensure_ascii=False, indent=2)
+            + "\n\nExercise catalog (id / name / category / cns load factor):\n"
+            + json.dumps(catalog, ensure_ascii=False)
+        ),
+        response_schema=AiSuggestExerciseResponse,
+        parse_fn=parse_ai_suggest_exercise,
+        coerce_fn=coerce_ai_suggest_exercise,
+        max_output_tokens=2048,
     )

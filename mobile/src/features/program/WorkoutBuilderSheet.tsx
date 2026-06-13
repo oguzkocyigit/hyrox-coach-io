@@ -17,15 +17,27 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { useCreateTemplate, useUpdateTemplate } from "@/api/hooks";
+import { useCreateTemplate, useGenerateDayWorkout, useSuggestExercise, useUpdateTemplate } from "@/api/hooks";
 import type {
   Exercise,
+  ExerciseSuggestResponse,
+  PlanEntry,
   PlanWorkoutType,
+  SessionKind,
+  SuggestMode,
   TemplateExercise,
+  WeeklyDayContext,
   WorkoutFormat,
   WorkoutTemplate,
   WorkoutTemplateCreate,
 } from "@/api/types";
+import {
+  buildAthleteContext,
+  useOnboardingStore,
+} from "@/features/onboarding/store";
+import { ExerciseAddMenuSheet } from "@/features/program/ExerciseAddMenuSheet";
+import { ExerciseEditorSheet } from "@/features/program/ExerciseEditorSheet";
+import { ExerciseSuggestPreviewSheet } from "@/features/program/ExerciseSuggestPreviewSheet";
 import {
   estimateDurationMinutes,
   exerciseSummary,
@@ -35,7 +47,7 @@ import {
   WORKOUT_FORMATS,
   WORKOUT_TYPES,
 } from "@/features/program/constants";
-import { ExerciseEditorSheet } from "@/features/program/ExerciseEditorSheet";
+import { dayOfWeekFromIso } from "@/features/program/weekContext";
 import { ExercisePicker } from "@/features/workout-log/ExercisePicker";
 import { Button } from "@/ui/Button";
 import { TextField } from "@/ui/TextField";
@@ -45,20 +57,61 @@ type WorkoutBuilderSheetProps = {
   visible: boolean;
   /** null: yeni sablon; dolu: duzenleme */
   template: WorkoutTemplate | null;
+  /** Haftalik plan baglami (AI onerileri icin) */
+  weekEntries?: PlanEntry[];
+  /** Bu idmanin atanacagi gun (ISO); yoksa bugun */
+  scheduledDate?: string | null;
   onClose: () => void;
   /** Kayit basariliysa olusan/guncellenen sablonla cagrilir */
   onSaved?: (template: WorkoutTemplate) => void;
 };
 
+function sessionKindFromType(t: PlanWorkoutType): SessionKind {
+  if (t === "running" || t === "endurance") return "running";
+  if (t === "hybrid" || t === "metcon") return "hybrid";
+  return "gym";
+}
+
 export function WorkoutBuilderSheet({
   visible,
   template,
+  weekEntries = [],
+  scheduledDate = null,
   onClose,
   onSaved,
 }: WorkoutBuilderSheetProps) {
   const insets = useSafeAreaInsets();
+  const onboarding = useOnboardingStore();
   const createTemplate = useCreateTemplate();
   const updateTemplate = useUpdateTemplate();
+  const suggestExercise = useSuggestExercise();
+  const generateDay = useGenerateDayWorkout();
+
+  const weeklyContext = useMemo((): WeeklyDayContext[] => {
+    const DAY_NAMES = [
+      "Pazartesi",
+      "Sali",
+      "Carsamba",
+      "Persembe",
+      "Cuma",
+      "Cumartesi",
+      "Pazar",
+    ];
+    return weekEntries.map((entry) => {
+      const dow = dayOfWeekFromIso(entry.scheduled_date);
+      return {
+        day_of_week: dow,
+        day_name: DAY_NAMES[dow] ?? `Gun ${dow + 1}`,
+        workout_name: entry.template.name,
+        exercise_names: entry.template.exercises.map((e) => e.name),
+      };
+    });
+  }, [weekEntries]);
+
+  const dayOfWeek = useMemo(() => {
+    if (scheduledDate) return dayOfWeekFromIso(scheduledDate);
+    return (new Date().getDay() + 6) % 7;
+  }, [scheduledDate]);
 
   const [name, setName] = useState("");
   const [workoutType, setWorkoutType] = useState<PlanWorkoutType>("hybrid");
@@ -75,18 +128,100 @@ export function WorkoutBuilderSheet({
     null,
   );
   const [customNamePrefill, setCustomNamePrefill] = useState("");
+  const [addMenuVisible, setAddMenuVisible] = useState(false);
+  const [suggestVisible, setSuggestVisible] = useState(false);
+  const [suggestMode, setSuggestMode] = useState<SuggestMode>("append");
+  const [suggestReplaceIndex, setSuggestReplaceIndex] = useState<number | null>(null);
+  const [suggestResult, setSuggestResult] = useState<ExerciseSuggestResponse | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [fillingAi, setFillingAi] = useState(false);
+  const [suggestEditInitial, setSuggestEditInitial] = useState<TemplateExercise | null>(null);
 
   const closeEditor = () => {
     setEditorVisible(false);
     setCatalogPick(null);
     setCustomNamePrefill("");
+    setSuggestEditInitial(null);
   };
 
   const openAddFlow = () => {
     setEditingIndex(null);
     setCatalogPick(null);
     setCustomNamePrefill("");
-    setPickerVisible(true);
+    setAddMenuVisible(true);
+  };
+
+  const buildSuggestPayload = (mode: SuggestMode, replaceIndex: number | null) => ({
+    mode,
+    workout_name: name.trim() || "Idman",
+    workout_type: workoutType,
+    format,
+    rounds: parsedRounds,
+    time_cap_minutes: parsedTimeCap,
+    existing_exercises: exercises,
+    replace_index: replaceIndex,
+    weekly_context: weeklyContext,
+    day_of_week: dayOfWeek,
+    athlete_context: buildAthleteContext(onboarding),
+  });
+
+  const requestAISuggest = async (mode: SuggestMode, replaceIndex: number | null) => {
+    setSuggestMode(mode);
+    setSuggestReplaceIndex(replaceIndex);
+    setSuggestResult(null);
+    setSuggestError(null);
+    setSuggestVisible(true);
+    try {
+      const result = await suggestExercise.mutateAsync(
+        buildSuggestPayload(mode, replaceIndex),
+      );
+      setSuggestResult(result);
+    } catch (e) {
+      setSuggestError(e instanceof Error ? e.message : "AI onerisi alinamadi.");
+    }
+  };
+
+  const applySuggestResult = (exercise: TemplateExercise, mode: SuggestMode, index: number | null) => {
+    setExercises((list) => {
+      if (mode === "replace" && index != null) {
+        const next = [...list];
+        next[index] = exercise;
+        return next;
+      }
+      return [...list, exercise];
+    });
+  };
+
+  const closeSuggestPreview = () => {
+    setSuggestVisible(false);
+    setSuggestResult(null);
+    setSuggestError(null);
+    setSuggestReplaceIndex(null);
+  };
+
+  const fillWorkoutWithAI = async () => {
+    setFillingAi(true);
+    setError(null);
+    try {
+      const result = await generateDay.mutateAsync({
+        day_of_week: dayOfWeek,
+        session_kind: sessionKindFromType(workoutType),
+        duration_minutes: estimatedMinutes > 0 ? estimatedMinutes : 60,
+        preferred_workout_type: workoutType,
+        athlete_context: buildAthleteContext(onboarding),
+      });
+      const t = result.template;
+      if (!name.trim()) setName(t.name);
+      setWorkoutType(t.workout_type);
+      setFormat(t.format);
+      setRounds(String(t.rounds));
+      setTimeCap(t.time_cap_minutes ? String(t.time_cap_minutes) : "");
+      setExercises(t.exercises);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "AI idman olusturulamadi.");
+    } finally {
+      setFillingAi(false);
+    }
   };
 
   useEffect(() => {
@@ -286,21 +421,39 @@ export function WorkoutBuilderSheet({
 
           <View style={styles.exerciseHeader}>
             <Text style={styles.sectionTitle}>Egzersizler</Text>
-            <Pressable
-              onPress={openAddFlow}
-              hitSlop={8}
-              style={styles.addExercise}
-              accessibilityLabel="Egzersiz ekle"
-            >
-              <Ionicons name="add-circle" size={20} color={color.accent.primary} />
-              <Text style={styles.addExerciseText}>Egzersiz Ekle</Text>
-            </Pressable>
+            <View style={styles.exerciseHeaderActions}>
+              {exercises.length === 0 ? (
+                <Pressable
+                  onPress={() => void fillWorkoutWithAI()}
+                  disabled={fillingAi || generateDay.isPending}
+                  hitSlop={8}
+                  style={styles.aiFillButton}
+                  accessibilityLabel="AI ile idmani doldur"
+                >
+                  <Ionicons name="sparkles" size={16} color={color.accent.primary} />
+                  <Text style={styles.aiFillText}>
+                    {fillingAi ? "..." : "AI ile Doldur"}
+                  </Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                onPress={openAddFlow}
+                hitSlop={8}
+                style={styles.addExercise}
+                accessibilityLabel="Egzersiz ekle"
+              >
+                <Ionicons name="add-circle" size={20} color={color.accent.primary} />
+                <Text style={styles.addExerciseText}>Ekle</Text>
+              </Pressable>
+            </View>
           </View>
 
           {exercises.length === 0 ? (
-            <Text style={styles.emptyExercises}>
-              Henuz egzersiz yok. "Egzersiz Ekle" ile basla.
-            </Text>
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyExercises}>
+                Henuz egzersiz yok. AI ile doldur veya Ekle ile basla.
+              </Text>
+            </View>
           ) : (
             exercises.map((exercise, index) => (
               <View key={`${exercise.name}-${index}`} style={styles.exerciseRow}>
@@ -351,6 +504,13 @@ export function WorkoutBuilderSheet({
                     <Ionicons name="create-outline" size={18} color={color.text.secondary} />
                   </Pressable>
                   <Pressable
+                    onPress={() => void requestAISuggest("replace", index)}
+                    hitSlop={6}
+                    accessibilityLabel="AI ile degistir"
+                  >
+                    <Ionicons name="sparkles-outline" size={18} color={color.accent.primary} />
+                  </Pressable>
+                  <Pressable
                     onPress={() => removeExercise(index)}
                     hitSlop={6}
                     accessibilityLabel="Sil"
@@ -380,6 +540,18 @@ export function WorkoutBuilderSheet({
         </View>
       </View>
 
+      <ExerciseAddMenuSheet
+        visible={addMenuVisible}
+        onClose={() => setAddMenuVisible(false)}
+        onPickAI={() => void requestAISuggest("append", null)}
+        onPickCatalog={() => setPickerVisible(true)}
+        onPickCustom={() => {
+          setCatalogPick(null);
+          setCustomNamePrefill("");
+          setEditorVisible(true);
+        }}
+      />
+
       <ExercisePicker
         visible={pickerVisible}
         onClose={() => setPickerVisible(false)}
@@ -400,7 +572,10 @@ export function WorkoutBuilderSheet({
 
       <ExerciseEditorSheet
         visible={editorVisible}
-        initial={editingIndex != null ? exercises[editingIndex] : null}
+        initial={
+          suggestEditInitial ??
+          (editingIndex != null ? exercises[editingIndex] : null)
+        }
         catalogExercise={editingIndex == null ? catalogPick : null}
         namePrefill={editingIndex == null && !catalogPick ? customNamePrefill : ""}
         onClose={closeEditor}
@@ -413,6 +588,36 @@ export function WorkoutBuilderSheet({
           });
           closeEditor();
         }}
+      />
+
+      <ExerciseSuggestPreviewSheet
+        visible={suggestVisible}
+        loading={suggestExercise.isPending}
+        error={suggestError}
+        result={suggestResult}
+        mode={suggestMode}
+        onClose={closeSuggestPreview}
+        onAccept={() => {
+          if (!suggestResult) return;
+          applySuggestResult(suggestResult.exercise, suggestMode, suggestReplaceIndex);
+          closeSuggestPreview();
+        }}
+        onEdit={() => {
+          if (!suggestResult) return;
+          const ex = suggestResult.exercise;
+          setSuggestEditInitial(ex);
+          if (suggestMode === "replace" && suggestReplaceIndex != null) {
+            setEditingIndex(suggestReplaceIndex);
+          } else {
+            setEditingIndex(null);
+          }
+          setCatalogPick(
+            ex.exercise_id ? { exercise_id: ex.exercise_id, name: ex.name } : null,
+          );
+          closeSuggestPreview();
+          setEditorVisible(true);
+        }}
+        onRetry={() => void requestAISuggest(suggestMode, suggestReplaceIndex)}
       />
     </Modal>
   );
@@ -523,6 +728,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  exerciseHeaderActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+  },
+  aiFillButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.xs,
+    borderWidth: 1,
+    borderColor: color.accent.primary,
+    borderRadius: radius.full,
+    paddingHorizontal: space.md,
+    paddingVertical: space.xs + 2,
+    backgroundColor: color.accent.subtle,
+  },
+  aiFillText: {
+    ...type.small,
+    color: color.accent.primary,
+    fontFamily: "Manrope_600SemiBold",
+  },
   addExercise: {
     flexDirection: "row",
     alignItems: "center",
@@ -531,6 +757,13 @@ const styles = StyleSheet.create({
   addExerciseText: {
     ...type.bodyStrong,
     color: color.accent.primary,
+  },
+  emptyBox: {
+    backgroundColor: color.bg.surface,
+    borderWidth: 1,
+    borderColor: color.stroke.subtle,
+    borderRadius: radius.md,
+    padding: space.lg,
   },
   emptyExercises: {
     ...type.body,

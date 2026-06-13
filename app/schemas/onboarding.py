@@ -10,7 +10,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app.schemas.plans import WorkoutTemplateCreate
+from app.schemas.plans import TemplateExercise, WorkoutTemplateCreate
 
 TrainingGoal = Literal["strength", "conditioning", "hybrid"]
 Zone2Habit = Literal["none", "sometimes", "regular"]
@@ -156,3 +156,53 @@ class ModifiedWorkoutResponse(BaseModel):
     focus: str = Field("", max_length=200)
     coach_note: str = Field("", max_length=500)
     template: WorkoutTemplateCreate
+
+
+class WeeklyDayContext(BaseModel):
+    """Haftalik plandaki bir gun — egzersiz onerisi baglami."""
+
+    day_of_week: int = Field(..., ge=0, le=6)
+    day_name: str = Field(..., min_length=1, max_length=20)
+    workout_name: str = Field(..., min_length=1, max_length=120)
+    exercise_names: list[str] = Field(default_factory=list, max_length=30)
+
+
+SuggestMode = Literal["append", "replace"]
+
+
+class ExerciseSuggestPayload(BaseModel):
+    """POST /plan/suggest-exercise — siradaki veya yerine egzersiz oner."""
+
+    mode: SuggestMode = "append"
+    workout_name: str = Field(..., min_length=1, max_length=120)
+    workout_type: str = Field(..., min_length=1, max_length=30)
+    format: str = Field("standard", max_length=20)
+    rounds: int = Field(1, ge=1, le=50)
+    time_cap_minutes: int | None = Field(None, ge=1, le=600)
+    existing_exercises: list[TemplateExercise] = Field(default_factory=list, max_length=50)
+    replace_index: int | None = Field(
+        None,
+        ge=0,
+        description="mode=replace ise degistirilecek egzersiz indeksi",
+    )
+    weekly_context: list[WeeklyDayContext] = Field(default_factory=list, max_length=7)
+    day_of_week: int | None = Field(None, ge=0, le=6)
+    athlete_context: AthleteContext | None = None
+
+    @model_validator(mode="after")
+    def validate_replace(self) -> "ExerciseSuggestPayload":
+        if self.mode == "replace":
+            if self.replace_index is None:
+                raise ValueError("replace modunda replace_index gerekli")
+            if self.replace_index >= len(self.existing_exercises):
+                raise ValueError("replace_index gecersiz")
+        elif self.replace_index is not None:
+            raise ValueError("append modunda replace_index verilmemeli")
+        return self
+
+
+class ExerciseSuggestResponse(BaseModel):
+    """POST /plan/suggest-exercise yaniti."""
+
+    coach_note: str = Field(..., min_length=1, max_length=500)
+    exercise: TemplateExercise

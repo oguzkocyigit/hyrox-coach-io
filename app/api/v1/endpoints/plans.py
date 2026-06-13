@@ -11,6 +11,8 @@ from app.core.database import get_db_session
 from app.core.security import get_current_user
 from app.schemas.onboarding import (
     DayWorkoutGeneratePayload,
+    ExerciseSuggestPayload,
+    ExerciseSuggestResponse,
     GeneratedDayWorkout,
     GeneratedWeekPlan,
     ModifiedWorkoutResponse,
@@ -31,12 +33,14 @@ from app.services.ai_coach import (
     generate_day_workout,
     generate_onboarding_plan,
     modify_workout_with_ai,
+    suggest_exercise_with_ai,
 )
 from app.services.plans import PlanNotFoundError
 from app.services.rate_limit import (
     PLAN_GENERATE_DAY_ENDPOINT,
     PLAN_GENERATE_ENDPOINT,
     PLAN_MODIFY_ENDPOINT,
+    PLAN_SUGGEST_EXERCISE_ENDPOINT,
     enforce_plan_generation_limit,
     record_ai_usage,
 )
@@ -225,6 +229,40 @@ async def modify_workout(
     _sanitize_template_exercise_ids(result.template, valid_ids)
 
     await record_ai_usage(db, current_user.user_id, PLAN_MODIFY_ENDPOINT)
+    return result
+
+
+@router.post(
+    "/plan/suggest-exercise",
+    response_model=ExerciseSuggestResponse,
+    summary="AI ile siradaki veya yerine egzersiz oner (tier limitli)",
+)
+async def suggest_exercise(
+    payload: ExerciseSuggestPayload,
+    current_user: UserProfile = Depends(enforce_plan_generation_limit),
+    db: AsyncSession = Depends(get_db_session),
+) -> ExerciseSuggestResponse:
+    """Mevcut idman taslagina tek egzersiz onerir (append veya replace)."""
+    catalog = await plan_service.fetch_exercise_catalog(db)
+
+    try:
+        result = await suggest_exercise_with_ai(payload, catalog)
+    except AIServiceNotConfiguredError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail="AI gecerli bir egzersiz oneremedi. Lutfen tekrar dene.",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+
+    if result.exercise.exercise_id and result.exercise.exercise_id not in {
+        item["id"] for item in catalog
+    }:
+        result.exercise.exercise_id = None
+
+    await record_ai_usage(db, current_user.user_id, PLAN_SUGGEST_EXERCISE_ENDPOINT)
     return result
 
 
