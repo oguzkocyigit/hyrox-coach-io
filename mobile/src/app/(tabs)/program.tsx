@@ -30,6 +30,7 @@ import type {
   PlanEntry,
   WorkoutTemplate,
 } from "@/api/types";
+import { normalizeWorkoutTemplate } from "@/features/program/normalizeTemplate";
 import {
   estimateDurationMinutes,
   typeMeta,
@@ -396,12 +397,15 @@ export default function ProgramScreen() {
       <WorkoutLibrarySheet
         visible={libraryVisible}
         onClose={() => setLibraryVisible(false)}
+        weekEntries={plan?.entries ?? []}
       />
 
       {/* Idman detayi */}
       <WorkoutDetailSheet
         visible={detailEntry != null}
-        template={detailEntry?.template ?? null}
+        template={
+          detailEntry ? normalizeWorkoutTemplate(detailEntry.template) : null
+        }
         onClose={() => setDetailEntry(null)}
         onStart={() => {
           if (detailEntry) {
@@ -431,7 +435,9 @@ export default function ProgramScreen() {
 
       <WorkoutSessionSheet
         visible={sessionEntry != null}
-        template={sessionEntry?.template ?? null}
+        template={
+          sessionEntry ? normalizeWorkoutTemplate(sessionEntry.template) : null
+        }
         planEntryId={sessionEntry?.entry_id ?? null}
         onClose={() => setSessionEntry(null)}
         onCompleted={() => void refetch()}

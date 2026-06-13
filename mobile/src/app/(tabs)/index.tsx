@@ -5,6 +5,7 @@ import { useWeeklyMetrics } from "@/api/hooks";
 import { CoachCard } from "@/features/coach/CoachCard";
 import { CnsTrendChart } from "@/features/dashboard/CnsTrendChart";
 import { TodaysWorkoutCard } from "@/features/program/TodaysWorkoutCard";
+import { HealthSyncCard } from "@/features/health-sync/HealthSyncCard";
 import { MuscleLoadBar } from "@/features/dashboard/MuscleLoadBar";
 import { WarningBanner } from "@/features/dashboard/WarningBanner";
 import { Button } from "@/ui/Button";
@@ -60,6 +61,8 @@ export default function DashboardScreen() {
         {data.warning_flag ? <WarningBanner muscles={data.overtraining_risk} /> : null}
 
         <TodaysWorkoutCard />
+
+        {!isEmpty ? <HealthSyncCard /> : null}
 
         <View>
           <Text style={styles.metricLabel}>BUGUNKU CNS YUKU</Text>

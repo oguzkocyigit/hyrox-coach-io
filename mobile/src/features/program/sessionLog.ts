@@ -9,19 +9,23 @@ import type {
   SetMeasurement,
   TemplateExercise,
   WorkoutCreate,
-  WorkoutFormat,
   WorkoutTemplate,
   WorkoutSet,
 } from "@/api/types";
+import { usesCircuitRounds } from "@/features/program/normalizeTemplate";
 import { parseNum } from "@/features/workout-log/draft";
 
-export type SessionExerciseLog = {
+export type SetLogDraft = {
   completed: boolean;
-  measurement: SetMeasurement;
   weight: string;
   value: string;
   rpe: string;
+};
+
+export type SessionExerciseLog = {
+  measurement: SetMeasurement;
   resolvedExerciseId: string | null;
+  sets: SetLogDraft[];
 };
 
 export function resolveExerciseId(
@@ -30,8 +34,14 @@ export function resolveExerciseId(
 ): string | null {
   if (exercise.exercise_id) return exercise.exercise_id;
   const key = exercise.name.trim().toLowerCase();
-  const match = catalog.find((e) => e.name.trim().toLowerCase() === key);
-  return match?.exercise_id ?? null;
+  const exact = catalog.find((e) => e.name.trim().toLowerCase() === key);
+  if (exact) return exact.exercise_id;
+  const partial = catalog.find(
+    (e) =>
+      e.name.toLowerCase().includes(key) ||
+      key.includes(e.name.trim().toLowerCase()),
+  );
+  return partial?.exercise_id ?? null;
 }
 
 export function templateMeasurementToSet(measurement: Measurement): SetMeasurement {
@@ -44,18 +54,52 @@ export function defaultLogValue(exercise: TemplateExercise): string {
   return String(exercise.distance_m ?? "");
 }
 
+function emptySetDraft(exercise: TemplateExercise): SetLogDraft {
+  return {
+    completed: false,
+    weight: exercise.weight_kg != null ? String(exercise.weight_kg) : "0",
+    value: defaultLogValue(exercise),
+    rpe: exercise.rpe != null ? String(exercise.rpe) : "",
+  };
+}
+
+function setCountForExercise(template: WorkoutTemplate, exercise: TemplateExercise): number {
+  if (usesCircuitRounds(template.format)) return Math.max(1, template.rounds);
+  return Math.max(1, exercise.sets);
+}
+
 export function initSessionLogs(
   template: WorkoutTemplate,
   catalog: Exercise[],
 ): SessionExerciseLog[] {
   return template.exercises.map((exercise) => ({
-    completed: false,
     measurement: templateMeasurementToSet(exercise.measurement),
-    weight: exercise.weight_kg != null ? String(exercise.weight_kg) : "0",
-    value: defaultLogValue(exercise),
-    rpe: exercise.rpe != null ? String(exercise.rpe) : "",
     resolvedExerciseId: resolveExerciseId(exercise, catalog),
+    sets: Array.from({ length: setCountForExercise(template, exercise) }, () =>
+      emptySetDraft(exercise),
+    ),
   }));
+}
+
+export function isExerciseDoneInRound(
+  log: SessionExerciseLog,
+  roundIndex: number,
+): boolean {
+  return log.sets[roundIndex]?.completed ?? false;
+}
+
+export function isRoundComplete(
+  logs: SessionExerciseLog[],
+  roundIndex: number,
+): boolean {
+  return logs.every((log) => isExerciseDoneInRound(log, roundIndex));
+}
+
+export function totalCompletedSets(logs: SessionExerciseLog[]): number {
+  return logs.reduce(
+    (sum, log) => sum + log.sets.filter((s) => s.completed).length,
+    0,
+  );
 }
 
 export function formatElapsed(totalSeconds: number): string {
@@ -83,38 +127,44 @@ export function buildSessionPayload(args: {
   for (let i = 0; i < args.template.exercises.length; i++) {
     const log = args.logs[i];
     const templateEx = args.template.exercises[i];
-    if (!log.completed) continue;
+    const completedSets = log.sets.filter((s) => s.completed);
+    if (completedSets.length === 0) continue;
+
     if (!log.resolvedExerciseId) {
       return {
         ok: false,
-        message: `"${templateEx.name}" katalogda bulunamadi; kayit icin egzersizi duzenle.`,
+        message: `"${templateEx.name}" katalogda bulunamadi; katalogdan eslestir.`,
       };
     }
 
-    const weight = parseNum(log.weight);
-    const value = parseNum(log.value);
-    const setRpe = log.rpe.trim() === "" ? null : parseNum(log.rpe);
+    const workoutSets: WorkoutSet[] = [];
+    for (const setDraft of completedSets) {
+      const weight = parseNum(setDraft.weight);
+      const value = parseNum(setDraft.value);
+      const setRpe = setDraft.rpe.trim() === "" ? null : parseNum(setDraft.rpe);
 
-    if (weight === null || weight < 0) {
-      return { ok: false, message: `${templateEx.name}: agirlik gir (vucut agirligi ise 0).` };
-    }
-    if (value === null || value <= 0) {
-      return { ok: false, message: `${templateEx.name}: gecerli bir deger gir.` };
-    }
-    if (setRpe !== null && (setRpe < 1 || setRpe > 10)) {
-      return { ok: false, message: `${templateEx.name}: RPE 1-10 arasi olmali.` };
+      if (weight === null || weight < 0) {
+        return { ok: false, message: `${templateEx.name}: agirlik gir (vucut agirligi ise 0).` };
+      }
+      if (value === null || value <= 0) {
+        return { ok: false, message: `${templateEx.name}: gecerli bir deger gir.` };
+      }
+      if (setRpe !== null && (setRpe < 1 || setRpe > 10)) {
+        return { ok: false, message: `${templateEx.name}: RPE 1-10 arasi olmali.` };
+      }
+
+      const set: WorkoutSet = {
+        measurement: log.measurement,
+        weight_kg: weight,
+      };
+      if (setRpe !== null) set.rpe = setRpe;
+      if (log.measurement === "reps") set.reps = Math.round(value);
+      else if (log.measurement === "distance") set.distance_m = value;
+      else set.duration_seconds = Math.round(value);
+      workoutSets.push(set);
     }
 
-    const set: WorkoutSet = {
-      measurement: log.measurement,
-      weight_kg: weight,
-    };
-    if (setRpe !== null) set.rpe = setRpe;
-    if (log.measurement === "reps") set.reps = Math.round(value);
-    else if (log.measurement === "distance") set.distance_m = value;
-    else set.duration_seconds = Math.round(value);
-
-    exercises.push({ exercise_id: log.resolvedExerciseId, sets: [set] });
+    exercises.push({ exercise_id: log.resolvedExerciseId, sets: workoutSets });
   }
 
   if (exercises.length === 0) {
@@ -133,6 +183,19 @@ export function buildSessionPayload(args: {
   };
 }
 
-export function isStationFormat(format: WorkoutFormat): boolean {
-  return format === "circuit" || format === "for_time" || format === "amrap" || format === "emom";
+export function activeSetIndex(
+  template: WorkoutTemplate,
+  currentRound: number,
+): number {
+  if (usesCircuitRounds(template.format)) {
+    return Math.max(0, Math.min(template.rounds - 1, currentRound - 1));
+  }
+  return 0;
+}
+
+export function totalSetSlots(template: WorkoutTemplate): number {
+  if (usesCircuitRounds(template.format)) {
+    return template.exercises.length * template.rounds;
+  }
+  return template.exercises.reduce((sum, e) => sum + Math.max(1, e.sets), 0);
 }

@@ -1,9 +1,9 @@
 /**
- * Canli idman oturumu: baslat / duraklat / sonlandir + egzersiz loglama.
+ * Canli idman oturumu: baslat / duraklat / sonlandir + tur takibi + loglama.
  */
 
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError } from "@/api/client";
 import { useExercises, useLogWorkout, useSetEntryCompletion } from "@/api/hooks";
-import type { WorkoutTemplate } from "@/api/types";
+import type { Exercise, WorkoutCreateResponse, WorkoutTemplate } from "@/api/types";
 import {
   estimateDurationMinutes,
   exerciseSummary,
@@ -27,12 +27,27 @@ import {
   formatUsesRounds,
   typeMeta,
 } from "@/features/program/constants";
+import { normalizeWorkoutTemplate, usesCircuitRounds } from "@/features/program/normalizeTemplate";
 import {
+  activeSetIndex,
   buildSessionPayload,
   formatElapsed,
   initSessionLogs,
+  isExerciseDoneInRound,
+  isRoundComplete,
+  resolveExerciseId,
+  totalCompletedSets,
+  totalSetSlots,
   type SessionExerciseLog,
+  type SetLogDraft,
 } from "@/features/program/sessionLog";
+import {
+  clearPersistedSession,
+  loadPersistedSession,
+  savePersistedSession,
+} from "@/features/program/sessionStore";
+import { ResultSheet } from "@/features/workout-log/ResultSheet";
+import { ExercisePicker } from "@/features/workout-log/ExercisePicker";
 import { Button } from "@/ui/Button";
 import { color, font, radius, space, type } from "@/ui/tokens";
 
@@ -54,7 +69,7 @@ function valueLabel(measurement: SessionExerciseLog["measurement"]): string {
 
 export function WorkoutSessionSheet({
   visible,
-  template,
+  template: rawTemplate,
   planEntryId,
   onClose,
   onCompleted,
@@ -64,27 +79,110 @@ export function WorkoutSessionSheet({
   const logWorkout = useLogWorkout();
   const setCompletion = useSetEntryCompletion();
 
+  const template = useMemo(
+    () => (rawTemplate ? normalizeWorkoutTemplate(rawTemplate) : null),
+    [rawTemplate],
+  );
+
   const [status, setStatus] = useState<SessionStatus>("idle");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [logs, setLogs] = useState<SessionExerciseLog[]>([]);
+  const [currentRound, setCurrentRound] = useState(1);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [overallRpe, setOverallRpe] = useState("");
   const [showFinishPanel, setShowFinishPanel] = useState(false);
+  const [result, setResult] = useState<WorkoutCreateResponse | null>(null);
+  const [pickerVisible, setPickerVisible] = useState(false);
 
   const startedAtRef = useRef<number | null>(null);
   const accumulatedRef = useRef(0);
+  const sessionTemplateIdRef = useRef<string | null>(null);
+  const hydratedRef = useRef(false);
 
   useEffect(() => {
-    if (!visible || !template) return;
-    setStatus("idle");
-    setElapsedSeconds(0);
-    setLogs(initSessionLogs(template, catalog));
-    setEditingIndex(null);
-    setOverallRpe("");
-    setShowFinishPanel(false);
-    startedAtRef.current = null;
-    accumulatedRef.current = 0;
+    if (!visible || !template) {
+      sessionTemplateIdRef.current = null;
+      hydratedRef.current = false;
+      return;
+    }
+
+    const isNewSession = sessionTemplateIdRef.current !== template.template_id;
+    if (!isNewSession && hydratedRef.current) return;
+
+    sessionTemplateIdRef.current = template.template_id;
+    hydratedRef.current = true;
+
+    void (async () => {
+      const saved = await loadPersistedSession(template.template_id);
+      if (saved) {
+        setStatus(saved.status);
+        setElapsedSeconds(saved.elapsedSeconds);
+        accumulatedRef.current = saved.accumulatedSeconds;
+        startedAtRef.current =
+          saved.status === "running" && saved.runningSince != null
+            ? saved.runningSince
+            : null;
+        setLogs(saved.logs);
+        setCurrentRound(saved.currentRound);
+        setOverallRpe(saved.overallRpe);
+        setShowFinishPanel(saved.showFinishPanel);
+        return;
+      }
+
+      setStatus("idle");
+      setElapsedSeconds(0);
+      setLogs(initSessionLogs(template, catalog));
+      setCurrentRound(1);
+      setEditingIndex(null);
+      setOverallRpe("");
+      setShowFinishPanel(false);
+      startedAtRef.current = null;
+      accumulatedRef.current = 0;
+    })();
   }, [visible, template, catalog]);
+
+  useEffect(() => {
+    if (!visible || !template || !hydratedRef.current) return;
+
+    if (catalog.length === 0) return;
+    setLogs((prev) => {
+      if (prev.length !== template.exercises.length) {
+        return initSessionLogs(template, catalog);
+      }
+      return prev.map((log, i) => ({
+        ...log,
+        resolvedExerciseId: log.resolvedExerciseId ?? resolveExerciseId(template.exercises[i], catalog),
+      }));
+    });
+  }, [catalog, visible, template]);
+
+  useEffect(() => {
+    if (!visible || !template || !hydratedRef.current) return;
+
+    void savePersistedSession({
+      templateId: template.template_id,
+      planEntryId: planEntryId ?? null,
+      status,
+      elapsedSeconds,
+      accumulatedSeconds: accumulatedRef.current,
+      runningSince: startedAtRef.current,
+      currentRound,
+      logs,
+      overallRpe,
+      showFinishPanel,
+      savedAt: Date.now(),
+    });
+  }, [
+    visible,
+    template,
+    planEntryId,
+    status,
+    elapsedSeconds,
+    currentRound,
+    logs,
+    overallRpe,
+    showFinishPanel,
+  ]);
 
   useEffect(() => {
     if (status !== "running") return;
@@ -100,9 +198,17 @@ export function WorkoutSessionSheet({
 
   if (!template) return null;
 
+  const activeLogs =
+    logs.length === template.exercises.length
+      ? logs
+      : initSessionLogs(template, catalog);
+
   const meta = typeMeta(template.workout_type);
   const fmt = formatMeta(template.format);
-  const completedCount = logs.filter((l) => l.completed).length;
+  const setIdx = activeSetIndex(template, currentRound);
+  const circuitMode = usesCircuitRounds(template.format);
+  const completedSets = totalCompletedSets(activeLogs);
+  const totalSlots = totalSetSlots(template);
 
   const handleStart = () => {
     startedAtRef.current = Date.now();
@@ -132,8 +238,36 @@ export function WorkoutSessionSheet({
     setShowFinishPanel(true);
   };
 
-  const updateLog = (index: number, patch: Partial<SessionExerciseLog>) => {
-    setLogs((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  const updateSetLog = (
+    exerciseIndex: number,
+    setIndex: number,
+    patch: Partial<SetLogDraft>,
+  ) => {
+    setLogs((prev) => {
+      const base =
+        prev.length === template.exercises.length
+          ? prev
+          : initSessionLogs(template, catalog);
+      return base.map((item, i) => {
+        if (i !== exerciseIndex) return item;
+        return {
+          ...item,
+          sets: item.sets.map((set, j) => (j === setIndex ? { ...set, ...patch } : set)),
+        };
+      });
+    });
+  };
+
+  const handleClose = () => {
+    if (status !== "idle" && status !== "finished") {
+      Alert.alert(
+        "Oturumu kapat",
+        "Devam eden idman kaydedildi; sonra ayni idmandan devam edebilirsin.",
+        [{ text: "Tamam", onPress: onClose }],
+      );
+      return;
+    }
+    onClose();
   };
 
   const submitWorkout = async () => {
@@ -148,7 +282,7 @@ export function WorkoutSessionSheet({
 
     const built = buildSessionPayload({
       template,
-      logs,
+      logs: activeLogs,
       durationMinutes,
       overallRpe: overallRpeNum,
     });
@@ -158,13 +292,14 @@ export function WorkoutSessionSheet({
     }
 
     try {
-      await logWorkout.mutateAsync(built.payload);
+      const response = await logWorkout.mutateAsync(built.payload);
       if (planEntryId) {
         await setCompletion.mutateAsync({ entryId: planEntryId, completed: true });
       }
+      await clearPersistedSession();
       onCompleted?.();
-      onClose();
-      Alert.alert("Kaydedildi", "Idmanin kaydedildi ve analiz motoruna iletildi.");
+      setResult(response);
+      setShowFinishPanel(false);
     } catch (e) {
       const msg =
         e instanceof ApiError ? e.message : e instanceof Error ? e.message : "Kayit basarisiz.";
@@ -173,208 +308,266 @@ export function WorkoutSessionSheet({
   };
 
   const canLog = status === "running" || status === "paused" || status === "finished";
-  const editing = editingIndex != null ? logs[editingIndex] : null;
+  const editing = editingIndex != null ? activeLogs[editingIndex] : null;
   const editingExercise =
     editingIndex != null ? template.exercises[editingIndex] : null;
+  const editingSet = editing?.sets[setIdx];
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.root, { paddingTop: insets.top + space.md }]}>
-        <View style={styles.header}>
-          <Pressable onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={24} color={color.text.secondary} />
-          </Pressable>
-          <Text style={styles.headerTitle}>Canli Idman</Text>
-          <View style={{ width: 24 }} />
-        </View>
-
-        <ScrollView
-          contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.xxl }]}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.timerCard}>
-            <Text style={styles.timerLabel}>SURE</Text>
-            <Text style={styles.timerValue}>{formatElapsed(elapsedSeconds)}</Text>
-            <Text style={styles.timerMeta}>
-              {completedCount}/{template.exercises.length} egzersiz tamamlandi
-            </Text>
+    <>
+      <Modal visible={visible && result == null} animationType="slide" onRequestClose={handleClose}>
+        <View style={[styles.root, { paddingTop: insets.top + space.md }]}>
+          <View style={styles.header}>
+            <Pressable onPress={handleClose} hitSlop={12}>
+              <Ionicons name="close" size={24} color={color.text.secondary} />
+            </Pressable>
+            <Text style={styles.headerTitle}>Canli Idman</Text>
+            <View style={{ width: 24 }} />
           </View>
 
-          <View style={styles.controlRow}>
-            {status === "idle" ? (
-              <Button label="Baslat" onPress={handleStart} />
-            ) : null}
-            {status === "running" ? (
-              <>
-                <Button label="Duraklat" variant="secondary" onPress={handlePause} />
-                <Button label="Sonlandir" onPress={handleFinishPress} />
-              </>
-            ) : null}
-            {status === "paused" ? (
-              <>
-                <Button label="Devam" onPress={handleResume} />
-                <Button label="Sonlandir" onPress={handleFinishPress} />
-              </>
-            ) : null}
-          </View>
+          <ScrollView
+            contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + space.xxl }]}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.timerCard}>
+              <Text style={styles.timerLabel}>SURE</Text>
+              <Text style={styles.timerValue}>{formatElapsed(elapsedSeconds)}</Text>
+              <Text style={styles.timerMeta}>
+                {circuitMode
+                  ? `Tur ${currentRound}/${template.rounds} · ${completedSets}/${totalSlots} istasyon`
+                  : `${completedSets}/${totalSlots} set tamamlandi`}
+              </Text>
+            </View>
 
-          <View style={styles.badges}>
-            <View style={styles.badge}>
-              <View style={[styles.dot, { backgroundColor: meta.dot }]} />
-              <Text style={styles.badgeText}>{meta.label}</Text>
+            <View style={styles.controlRow}>
+              {status === "idle" ? <Button label="Baslat" onPress={handleStart} /> : null}
+              {status === "running" ? (
+                <>
+                  <Button label="Duraklat" variant="secondary" onPress={handlePause} />
+                  <Button label="Sonlandir" onPress={handleFinishPress} />
+                </>
+              ) : null}
+              {status === "paused" ? (
+                <>
+                  <Button label="Devam" onPress={handleResume} />
+                  <Button label="Sonlandir" onPress={handleFinishPress} />
+                </>
+              ) : null}
             </View>
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{fmt.label}</Text>
-            </View>
-            {formatUsesRounds(template.format) && template.rounds > 1 ? (
+
+            <View style={styles.badges}>
               <View style={styles.badge}>
-                <Text style={styles.badgeText}>{template.rounds} tur</Text>
+                <View style={[styles.dot, { backgroundColor: meta.dot }]} />
+                <Text style={styles.badgeText}>{meta.label}</Text>
+              </View>
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{fmt.label}</Text>
+              </View>
+              {formatUsesRounds(template.format) && template.rounds > 1 ? (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{template.rounds} tur</Text>
+                </View>
+              ) : null}
+            </View>
+
+            <Text style={styles.title}>{template.name}</Text>
+            <Text style={styles.subtitle}>
+              Tahmini {estimateDurationMinutes(template)} dk · {fmt.description}
+            </Text>
+
+            <Text style={styles.sectionLabel}>
+              {circuitMode ? `Tur ${currentRound} — Egzersizler` : "Egzersizler"}
+            </Text>
+            {template.exercises.map((exercise, index) => {
+              const log = activeLogs[index];
+              if (!log) return null;
+              const done = isExerciseDoneInRound(log, setIdx);
+              const setDraft = log.sets[setIdx];
+              return (
+                <Pressable
+                  key={`${exercise.name}-${index}`}
+                  disabled={!canLog}
+                  onPress={() => setEditingIndex(index)}
+                  style={[
+                    styles.exerciseRow,
+                    done && styles.exerciseRowDone,
+                    !canLog && styles.exerciseRowDisabled,
+                  ]}
+                >
+                  <View style={[styles.orderBadge, done && styles.orderBadgeDone]}>
+                    {done ? (
+                      <Ionicons name="checkmark" size={14} color={color.accent.ink} />
+                    ) : (
+                      <Text style={styles.orderText}>{index + 1}</Text>
+                    )}
+                  </View>
+                  <View style={styles.exerciseTexts}>
+                    <Text style={styles.exerciseName}>{exercise.name}</Text>
+                    <Text style={styles.exerciseMeta}>
+                      {exerciseSummary(exercise, template.format)}
+                    </Text>
+                    {done && setDraft ? (
+                      <Text style={styles.loggedHint}>
+                        Kayit: {setDraft.value}
+                        {log.measurement === "distance" ? "m" : ""}
+                        {setDraft.rpe.trim() ? ` · RPE ${setDraft.rpe}` : ""}
+                      </Text>
+                    ) : canLog ? (
+                      <Text style={styles.tapHint}>Tamamla ve deger gir</Text>
+                    ) : null}
+                  </View>
+                  <Ionicons
+                    name={done ? "create-outline" : "ellipse-outline"}
+                    size={20}
+                    color={done ? color.accent.primary : color.stroke.strong}
+                  />
+                </Pressable>
+              );
+            })}
+
+            {showFinishPanel ? (
+              <View style={styles.finishPanel}>
+                <Text style={styles.sectionLabel}>IDMANI KAYDET</Text>
+                <Text style={styles.finishHint}>
+                  Genel RPE opsiyonel; bos birakirsan 7 kabul edilir.
+                </Text>
+                <TextInput
+                  style={styles.rpeInput}
+                  value={overallRpe}
+                  onChangeText={setOverallRpe}
+                  keyboardType="decimal-pad"
+                  placeholder="Genel RPE (1-10, opsiyonel)"
+                  placeholderTextColor={color.text.secondary}
+                />
+                <Button
+                  label="Kaydet ve Bitir"
+                  onPress={() => void submitWorkout()}
+                  loading={logWorkout.isPending || setCompletion.isPending}
+                />
               </View>
             ) : null}
-          </View>
+          </ScrollView>
 
-          <Text style={styles.title}>{template.name}</Text>
-          <Text style={styles.subtitle}>
-            Tahmini {estimateDurationMinutes(template)} dk · {fmt.description}
-          </Text>
+          {editing && editingExercise && editingSet ? (
+            <View style={styles.logOverlay}>
+              <View style={[styles.logSheet, { paddingBottom: insets.bottom + space.lg }]}>
+                <Text style={styles.logTitle}>{editingExercise.name}</Text>
+                <Text style={styles.logSubtitle}>
+                  {circuitMode ? `Tur ${currentRound} · ` : ""}
+                  {exerciseSummary(editingExercise, template.format)}
+                </Text>
 
-          <Text style={styles.sectionLabel}>Egzersizler</Text>
-          {template.exercises.map((exercise, index) => {
-            const log = logs[index];
-            return (
-              <Pressable
-                key={`${exercise.name}-${index}`}
-                disabled={!canLog}
-                onPress={() => setEditingIndex(index)}
-                style={[
-                  styles.exerciseRow,
-                  log.completed && styles.exerciseRowDone,
-                  !canLog && styles.exerciseRowDisabled,
-                ]}
-              >
-                <View style={[styles.orderBadge, log.completed && styles.orderBadgeDone]}>
-                  {log.completed ? (
-                    <Ionicons name="checkmark" size={14} color={color.accent.ink} />
-                  ) : (
-                    <Text style={styles.orderText}>{index + 1}</Text>
-                  )}
-                </View>
-                <View style={styles.exerciseTexts}>
-                  <Text style={styles.exerciseName}>{exercise.name}</Text>
-                  <Text style={styles.exerciseMeta}>
-                    {exerciseSummary(exercise, template.format)}
-                  </Text>
-                  {log.completed ? (
-                    <Text style={styles.loggedHint}>
-                      Kayit: {log.value}
-                      {log.measurement === "distance" ? "m" : ""}
-                      {log.rpe.trim() ? ` · RPE ${log.rpe}` : ""}
-                    </Text>
-                  ) : canLog ? (
-                    <Text style={styles.tapHint}>Tamamla ve deger gir</Text>
-                  ) : null}
-                </View>
-                <Ionicons
-                  name={log.completed ? "create-outline" : "ellipse-outline"}
-                  size={20}
-                  color={log.completed ? color.accent.primary : color.stroke.strong}
+                {!editing.resolvedExerciseId ? (
+                  <Pressable
+                    style={styles.linkRow}
+                    onPress={() => setPickerVisible(true)}
+                  >
+                    <Ionicons name="search-outline" size={16} color={color.accent.primary} />
+                    <Text style={styles.linkText}>Katalogdan eslestir</Text>
+                  </Pressable>
+                ) : null}
+
+                <Text style={styles.fieldLabel}>AGIRLIK (KG)</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={editingSet.weight}
+                  onChangeText={(v) => updateSetLog(editingIndex!, setIdx, { weight: v })}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor={color.text.secondary}
                 />
-              </Pressable>
-            );
-          })}
 
-          {showFinishPanel ? (
-            <View style={styles.finishPanel}>
-              <Text style={styles.sectionLabel}>IDMANI KAYDET</Text>
-              <Text style={styles.finishHint}>
-                Genel RPE opsiyonel; bos birakirsan 7 kabul edilir.
-              </Text>
-              <TextInput
-                style={styles.rpeInput}
-                value={overallRpe}
-                onChangeText={setOverallRpe}
-                keyboardType="decimal-pad"
-                placeholder="Genel RPE (1-10, opsiyonel)"
-                placeholderTextColor={color.text.secondary}
-              />
-              <Button
-                label="Kaydet ve Bitir"
-                onPress={() => void submitWorkout()}
-                loading={logWorkout.isPending || setCompletion.isPending}
-              />
+                <Text style={styles.fieldLabel}>{valueLabel(editing.measurement).toUpperCase()}</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={editingSet.value}
+                  onChangeText={(v) => updateSetLog(editingIndex!, setIdx, { value: v })}
+                  keyboardType="decimal-pad"
+                  placeholder="Deger"
+                  placeholderTextColor={color.text.secondary}
+                />
+
+                <Text style={styles.fieldLabel}>RPE (OPSIYONEL)</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={editingSet.rpe}
+                  onChangeText={(v) => updateSetLog(editingIndex!, setIdx, { rpe: v })}
+                  keyboardType="decimal-pad"
+                  placeholder="1-10"
+                  placeholderTextColor={color.text.secondary}
+                />
+
+                <View style={styles.logActions}>
+                  <Button
+                    label="Iptal"
+                    variant="secondary"
+                    onPress={() => setEditingIndex(null)}
+                  />
+                  <Button
+                    label="Tamamlandi"
+                    onPress={() => {
+                      setLogs((prev) => {
+                        const base =
+                          prev.length === template.exercises.length
+                            ? prev
+                            : initSessionLogs(template, catalog);
+                        const next = base.map((item, i) => {
+                          if (i !== editingIndex) return item;
+                          return {
+                            ...item,
+                            sets: item.sets.map((s, j) =>
+                              j === setIdx ? { ...s, completed: true } : s,
+                            ),
+                          };
+                        });
+                        if (
+                          circuitMode &&
+                          isRoundComplete(next, setIdx) &&
+                          currentRound < template.rounds
+                        ) {
+                          setCurrentRound((r) => r + 1);
+                        }
+                        return next;
+                      });
+                      setEditingIndex(null);
+                    }}
+                  />
+                </View>
+              </View>
             </View>
           ) : null}
-        </ScrollView>
 
-        {editing && editingExercise ? (
-          <View style={styles.logOverlay}>
-            <View style={[styles.logSheet, { paddingBottom: insets.bottom + space.lg }]}>
-              <Text style={styles.logTitle}>{editingExercise.name}</Text>
-              <Text style={styles.logSubtitle}>
-                {exerciseSummary(editingExercise, template.format)}
-              </Text>
-
-              <Text style={styles.fieldLabel}>AGIRLIK (KG)</Text>
-              <TextInput
-                style={styles.fieldInput}
-                value={editing.weight}
-                onChangeText={(v) => updateLog(editingIndex!, { weight: v })}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                placeholderTextColor={color.text.secondary}
-              />
-
-              <Text style={styles.fieldLabel}>{valueLabel(editing.measurement).toUpperCase()}</Text>
-              <TextInput
-                style={styles.fieldInput}
-                value={editing.value}
-                onChangeText={(v) => updateLog(editingIndex!, { value: v })}
-                keyboardType="decimal-pad"
-                placeholder="Deger"
-                placeholderTextColor={color.text.secondary}
-              />
-
-              <Text style={styles.fieldLabel}>RPE (OPSIYONEL)</Text>
-              <TextInput
-                style={styles.fieldInput}
-                value={editing.rpe}
-                onChangeText={(v) => updateLog(editingIndex!, { rpe: v })}
-                keyboardType="decimal-pad"
-                placeholder="1-10"
-                placeholderTextColor={color.text.secondary}
-              />
-
-              {!editing.resolvedExerciseId ? (
-                <Text style={styles.warnText}>
-                  Bu hareket katalogda eslesmedi; kayit sirasinda hata alabilirsin.
-                </Text>
-              ) : null}
-
-              <View style={styles.logActions}>
-                <Button
-                  label="Iptal"
-                  variant="secondary"
-                  onPress={() => setEditingIndex(null)}
-                />
-                <Button
-                  label="Tamamlandi"
-                  onPress={() => {
-                    updateLog(editingIndex!, { completed: true });
-                    setEditingIndex(null);
-                  }}
-                />
-              </View>
+          {logWorkout.isPending ? (
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator size="large" color={color.accent.primary} />
             </View>
-          </View>
-        ) : null}
+          ) : null}
+        </View>
+      </Modal>
 
-        {logWorkout.isPending ? (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={color.accent.primary} />
-          </View>
-        ) : null}
-      </View>
-    </Modal>
+      <ExercisePicker
+        visible={pickerVisible}
+        onClose={() => setPickerVisible(false)}
+        title="Katalogdan Eslestir"
+        onSelect={(exercise: Exercise) => {
+          if (editingIndex == null) return;
+          setLogs((prev) =>
+            prev.map((item, i) =>
+              i === editingIndex ? { ...item, resolvedExerciseId: exercise.exercise_id } : item,
+            ),
+          );
+          setPickerVisible(false);
+        }}
+      />
+
+      <ResultSheet
+        result={result}
+        onClose={() => {
+          setResult(null);
+          onClose();
+        }}
+      />
+    </>
   );
 }
 
@@ -419,6 +612,7 @@ const styles = StyleSheet.create({
   timerMeta: {
     ...type.small,
     color: color.text.secondary,
+    textAlign: "center",
   },
   controlRow: {
     gap: space.sm,
@@ -558,6 +752,16 @@ const styles = StyleSheet.create({
     color: color.text.secondary,
     marginBottom: space.sm,
   },
+  linkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.xs,
+    marginBottom: space.sm,
+  },
+  linkText: {
+    ...type.small,
+    color: color.accent.primary,
+  },
   fieldLabel: {
     ...type.micro,
     color: color.text.secondary,
@@ -572,10 +776,6 @@ const styles = StyleSheet.create({
     paddingVertical: space.md,
     color: color.text.primary,
     ...type.body,
-  },
-  warnText: {
-    ...type.small,
-    color: color.status.danger,
   },
   logActions: {
     flexDirection: "row",

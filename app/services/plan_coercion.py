@@ -131,8 +131,10 @@ def _normalize_station_structure(
         )
 
     rounds = template.rounds
-    if workout_format in {"circuit", "amrap"} and rounds <= 1:
-        rounds = 3
+    if workout_format in {"circuit", "amrap", "for_time"} and rounds <= 1:
+        rounds = _infer_rounds_from_duration(
+            template.model_copy(update={"exercises": normalized, "format": workout_format})
+        )
 
     return template.model_copy(
         update={
@@ -140,6 +142,29 @@ def _normalize_station_structure(
             "rounds": rounds,
         }
     )
+
+
+def _infer_rounds_from_duration(template: WorkoutTemplateCreate) -> int:
+    """Hedef sure / time cap'ten circuit tur sayisini tahmin eder."""
+    if template.format not in {"circuit", "for_time", "amrap"}:
+        return max(1, template.rounds)
+
+    target_minutes = template.time_cap_minutes or estimate_template_minutes(template)
+    if target_minutes <= 0:
+        return max(3, template.rounds)
+
+    round_seconds = 0.0
+    for exercise in template.exercises:
+        if exercise.measurement == "reps":
+            round_seconds += (exercise.reps or 0) * 4
+        elif exercise.measurement == "time":
+            round_seconds += exercise.duration_seconds or 0
+        else:
+            round_seconds += ((exercise.distance_m or 0) / 1000) * 180
+    round_seconds = max(round_seconds, 60.0)
+
+    rounds = round((target_minutes * 60) / round_seconds)
+    return min(50, max(3, rounds))
 
 
 def parse_ai_response(raw_text: str) -> AiPlanResponse:

@@ -21,15 +21,17 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useDeleteTemplate, useTemplates } from "@/api/hooks";
-import type { PlanWorkoutType, WorkoutTemplate } from "@/api/types";
+import type { PlanEntry, PlanWorkoutType, WorkoutTemplate } from "@/api/types";
 import {
   estimateDurationMinutes,
   exerciseSummary,
   typeMeta,
   WORKOUT_TYPES,
 } from "@/features/program/constants";
+import { normalizeWorkoutTemplate } from "@/features/program/normalizeTemplate";
 import { WorkoutBuilderSheet } from "@/features/program/WorkoutBuilderSheet";
 import { WorkoutDetailSheet } from "@/features/program/WorkoutDetailSheet";
+import { WorkoutModifyAISheet } from "@/features/program/WorkoutModifyAISheet";
 import { color, font, radius, space, type } from "@/ui/tokens";
 
 const PREVIEW_COUNT = 3;
@@ -37,9 +39,14 @@ const PREVIEW_COUNT = 3;
 type WorkoutLibrarySheetProps = {
   visible: boolean;
   onClose: () => void;
+  weekEntries?: PlanEntry[];
 };
 
-export function WorkoutLibrarySheet({ visible, onClose }: WorkoutLibrarySheetProps) {
+export function WorkoutLibrarySheet({
+  visible,
+  onClose,
+  weekEntries = [],
+}: WorkoutLibrarySheetProps) {
   const insets = useSafeAreaInsets();
   const { data: templates, isLoading } = useTemplates();
   const deleteTemplate = useDeleteTemplate();
@@ -49,6 +56,7 @@ export function WorkoutLibrarySheet({ visible, onClose }: WorkoutLibrarySheetPro
   const [builderVisible, setBuilderVisible] = useState(false);
   const [builderTemplate, setBuilderTemplate] = useState<WorkoutTemplate | null>(null);
   const [detailTemplate, setDetailTemplate] = useState<WorkoutTemplate | null>(null);
+  const [modifyTemplate, setModifyTemplate] = useState<WorkoutTemplate | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -231,7 +239,7 @@ export function WorkoutLibrarySheet({ visible, onClose }: WorkoutLibrarySheetPro
                       <Text key={`${exercise.name}-${index}`} style={styles.previewItem}>
                         · {exercise.name}{" "}
                         <Text style={styles.previewMeta}>
-                          ({exerciseSummary(exercise)})
+                          ({exerciseSummary(exercise, item.format)})
                         </Text>
                       </Text>
                     ))}
@@ -258,16 +266,34 @@ export function WorkoutLibrarySheet({ visible, onClose }: WorkoutLibrarySheetPro
       <WorkoutBuilderSheet
         visible={builderVisible}
         template={builderTemplate}
+        weekEntries={weekEntries}
         onClose={() => setBuilderVisible(false)}
       />
 
       <WorkoutDetailSheet
         visible={detailTemplate != null}
-        template={detailTemplate}
+        template={detailTemplate ? normalizeWorkoutTemplate(detailTemplate) : null}
         onClose={() => setDetailTemplate(null)}
+        onModifyAI={(template) => {
+          setModifyTemplate(template);
+          setDetailTemplate(null);
+        }}
         onEdit={(template) => {
           setDetailTemplate(null);
           openBuilder(template);
+        }}
+      />
+
+      <WorkoutModifyAISheet
+        visible={modifyTemplate != null}
+        template={modifyTemplate ? normalizeWorkoutTemplate(modifyTemplate) : null}
+        onClose={() => setModifyTemplate(null)}
+        onModified={(result) => {
+          const base = modifyTemplate;
+          setModifyTemplate(null);
+          if (base) {
+            setDetailTemplate({ ...base, ...result.template });
+          }
         }}
       />
     </Modal>

@@ -93,3 +93,20 @@ class TestStationNormalization:
         assert template.format == "for_time"
         assert all(ex.sets == 1 for ex in template.exercises)
         assert template.exercises[0].distance_m == 1000
+
+    def test_infer_rounds_from_55_min_cap(self):
+        ai_template = AiPlanTemplate(
+            name="HYROX",
+            workout_type="hybrid",
+            format="for_time",
+            rounds=1,
+            time_cap_minutes=55,
+            exercises=[
+                AiPlanExercise(name="SkiErg", measurement="distance", sets=3, distance_m=1000),
+                AiPlanExercise(name="Sled", measurement="distance", sets=3, distance_m=100),
+                AiPlanExercise(name="Row", measurement="distance", sets=3, distance_m=500),
+            ],
+        )
+        template = _coerce_template_from_ai(ai_template)
+        assert template is not None
+        assert template.rounds >= 3
