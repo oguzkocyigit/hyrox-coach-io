@@ -87,6 +87,11 @@ class WorkoutCreate(BaseModel):
     user_reported_rpe: float = Field(
         7.0, ge=1.0, le=10.0, description="Idman geneli hissedilen zorluk (1-10); bos birakilirsa 7"
     )
+    journal_notes: str | None = Field(
+        default=None,
+        max_length=1500,
+        description="Idman sonrasi serbest metin gunluk (enerji, agirlik hissi, beslenme vb.)",
+    )
     duration_minutes: int = Field(..., gt=0)
     date: datetime | None = Field(None, description="Bos birakilirsa sunucu zamani kullanilir")
     exercises: list[ExerciseLog] | None = None

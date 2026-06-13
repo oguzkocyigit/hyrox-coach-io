@@ -44,6 +44,7 @@ import {
 import {
   clearPersistedSession,
   loadPersistedSession,
+  parsePersistedRpe,
   savePersistedSession,
 } from "@/features/program/sessionStore";
 import { ResultSheet } from "@/features/workout-log/ResultSheet";
@@ -52,6 +53,9 @@ import { Button } from "@/ui/Button";
 import { color, font, radius, space, type } from "@/ui/tokens";
 
 type SessionStatus = "idle" | "running" | "paused" | "finished";
+
+const RPE_VALUES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+const JOURNAL_MAX_LENGTH = 1500;
 
 type WorkoutSessionSheetProps = {
   visible: boolean;
@@ -89,7 +93,9 @@ export function WorkoutSessionSheet({
   const [logs, setLogs] = useState<SessionExerciseLog[]>([]);
   const [currentRound, setCurrentRound] = useState(1);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [overallRpe, setOverallRpe] = useState("");
+  const [overallRpe, setOverallRpe] = useState<number | null>(null);
+  const [journalNotes, setJournalNotes] = useState("");
+  const [journalFocused, setJournalFocused] = useState(false);
   const [showFinishPanel, setShowFinishPanel] = useState(false);
   const [result, setResult] = useState<WorkoutCreateResponse | null>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -124,7 +130,8 @@ export function WorkoutSessionSheet({
             : null;
         setLogs(saved.logs);
         setCurrentRound(saved.currentRound);
-        setOverallRpe(saved.overallRpe);
+        setOverallRpe(parsePersistedRpe(saved.overallRpe));
+        setJournalNotes(saved.journalNotes ?? "");
         setShowFinishPanel(saved.showFinishPanel);
         return;
       }
@@ -134,7 +141,8 @@ export function WorkoutSessionSheet({
       setLogs(initSessionLogs(template, catalog));
       setCurrentRound(1);
       setEditingIndex(null);
-      setOverallRpe("");
+      setOverallRpe(null);
+      setJournalNotes("");
       setShowFinishPanel(false);
       startedAtRef.current = null;
       accumulatedRef.current = 0;
@@ -169,6 +177,7 @@ export function WorkoutSessionSheet({
       currentRound,
       logs,
       overallRpe,
+      journalNotes,
       showFinishPanel,
       savedAt: Date.now(),
     });
@@ -181,6 +190,7 @@ export function WorkoutSessionSheet({
     currentRound,
     logs,
     overallRpe,
+    journalNotes,
     showFinishPanel,
   ]);
 
@@ -272,10 +282,8 @@ export function WorkoutSessionSheet({
 
   const submitWorkout = async () => {
     const durationMinutes = Math.max(1, elapsedSeconds / 60);
-    const overallRpeNum =
-      overallRpe.trim() === "" ? null : Number(overallRpe.replace(",", "."));
 
-    if (overallRpeNum !== null && (overallRpeNum < 1 || overallRpeNum > 10)) {
+    if (overallRpe !== null && (overallRpe < 1 || overallRpe > 10)) {
       Alert.alert("Hata", "Genel RPE 1-10 arasi olmali.");
       return;
     }
@@ -284,7 +292,8 @@ export function WorkoutSessionSheet({
       template,
       logs: activeLogs,
       durationMinutes,
-      overallRpe: overallRpeNum,
+      overallRpe,
+      journalNotes,
     });
     if (!built.ok) {
       Alert.alert("Hata", built.message);
@@ -428,17 +437,57 @@ export function WorkoutSessionSheet({
             {showFinishPanel ? (
               <View style={styles.finishPanel}>
                 <Text style={styles.sectionLabel}>IDMANI KAYDET</Text>
-                <Text style={styles.finishHint}>
-                  Genel RPE opsiyonel; bos birakirsan 7 kabul edilir.
-                </Text>
-                <TextInput
-                  style={styles.rpeInput}
-                  value={overallRpe}
-                  onChangeText={setOverallRpe}
-                  keyboardType="decimal-pad"
-                  placeholder="Genel RPE (1-10, opsiyonel)"
-                  placeholderTextColor={color.text.secondary}
-                />
+
+                <View style={styles.finishFieldGroup}>
+                  <Text style={styles.finishFieldLabel}>IDMAN GENELI RPE</Text>
+                  <Text style={styles.finishHint}>
+                    Genel zorluk (1-10). Bos birakirsan 7 kabul edilir.
+                  </Text>
+                  <View style={styles.rpeRow}>
+                    {RPE_VALUES.map((value) => {
+                      const active = overallRpe === value;
+                      return (
+                        <Pressable
+                          key={value}
+                          onPress={() => setOverallRpe(value)}
+                          style={[styles.rpePill, active && styles.rpePillActive]}
+                          accessibilityLabel={`RPE ${value}`}
+                          accessibilityState={{ selected: active }}
+                        >
+                          <Text style={[styles.rpeText, active && styles.rpeTextActive]}>
+                            {value}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.finishFieldGroup}>
+                  <Text style={styles.finishFieldLabel}>IDMAN GUNLUGU (OPSIYONEL)</Text>
+                  <TextInput
+                    style={[
+                      styles.journalInput,
+                      journalFocused && styles.journalInputFocused,
+                    ]}
+                    value={journalNotes}
+                    onChangeText={setJournalNotes}
+                    onFocus={() => setJournalFocused(true)}
+                    onBlur={() => setJournalFocused(false)}
+                    multiline
+                    maxLength={JOURNAL_MAX_LENGTH}
+                    textAlignVertical="top"
+                    placeholder="Idman nasil hissettirdi? OMAD/Karb dongun enerjini nasil etkiledi? Buraya not dus..."
+                    placeholderTextColor={color.text.disabled}
+                    accessibilityLabel="Idman gunlugu"
+                  />
+                  {journalNotes.length > 0 ? (
+                    <Text style={styles.journalCounter}>
+                      {journalNotes.length}/{JOURNAL_MAX_LENGTH}
+                    </Text>
+                  ) : null}
+                </View>
+
                 <Button
                   label="Kaydet ve Bitir"
                   onPress={() => void submitWorkout()}
@@ -714,22 +763,66 @@ const styles = StyleSheet.create({
     borderColor: color.stroke.subtle,
     borderRadius: radius.lg,
     padding: space.lg,
-    gap: space.md,
+    gap: space.lg,
     marginTop: space.md,
+  },
+  finishFieldGroup: {
+    gap: space.sm,
+  },
+  finishFieldLabel: {
+    ...type.micro,
+    color: color.text.secondary,
   },
   finishHint: {
     ...type.small,
     color: color.text.secondary,
   },
-  rpeInput: {
+  rpeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: space.sm,
+  },
+  rpePill: {
+    minWidth: 44,
+    height: 44,
+    paddingHorizontal: space.md,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: color.stroke.strong,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: color.bg.elevated,
+  },
+  rpePillActive: {
+    backgroundColor: color.accent.primary,
+    borderColor: color.accent.primary,
+  },
+  rpeText: {
+    fontFamily: font.data.medium,
+    fontSize: 14,
+    color: color.text.secondary,
+  },
+  rpeTextActive: {
+    color: color.accent.ink,
+  },
+  journalInput: {
     backgroundColor: color.bg.elevated,
     borderWidth: 1,
-    borderColor: color.stroke.subtle,
+    borderColor: color.stroke.strong,
     borderRadius: radius.md,
     paddingHorizontal: space.md,
     paddingVertical: space.md,
+    minHeight: 128,
     color: color.text.primary,
     ...type.body,
+  },
+  journalInputFocused: {
+    borderColor: color.accent.primary,
+  },
+  journalCounter: {
+    ...type.small,
+    color: color.text.disabled,
+    textAlign: "right",
   },
   logOverlay: {
     ...StyleSheet.absoluteFill,

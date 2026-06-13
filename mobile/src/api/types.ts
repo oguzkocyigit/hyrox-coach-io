@@ -86,6 +86,7 @@ export interface CardioLog {
 export interface WorkoutCreate {
   workout_type: string;
   user_reported_rpe: number;
+  journal_notes?: string | null;
   duration_minutes: number;
   date?: string | null;
   exercises?: ExerciseLog[] | null;
@@ -196,6 +197,21 @@ export interface WeeklyAnalysisResponse {
   tier: UserTier;
   metrics: Omit<WeeklyMetricsResponse, "total_run_distance_km" | "total_workouts">;
   analysis: CoachAnalysis;
+}
+
+// ---------------------------------------------------------------
+// Pazar degerlendirme sihirbazi (POST /analysis/sunday-review)
+// ---------------------------------------------------------------
+export interface SundayReviewPayload {
+  missed_workouts_reason: string;
+  nutrition_adherence: number;
+  recovery_feeling: string;
+}
+
+export interface SundayReviewResponse {
+  review_summary: string;
+  next_week_adjustments: string;
+  readiness_score: number;
 }
 
 // ---------------------------------------------------------------

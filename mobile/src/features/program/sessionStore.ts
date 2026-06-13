@@ -17,10 +17,26 @@ export type PersistedSession = {
   runningSince: number | null;
   currentRound: number;
   logs: SessionExerciseLog[];
-  overallRpe: string;
+  /** Genel idman RPE (1-10); bos birakilirsa kayitta 7 kullanilir. */
+  overallRpe: number | null;
+  /** Idman sonrasi serbest metin gunluk (max 1500 karakter). */
+  journalNotes: string;
   showFinishPanel: boolean;
   savedAt: number;
 };
+
+/** Eski oturumlarda overallRpe string olarak saklanmis olabilir. */
+export function parsePersistedRpe(value: unknown): number | null {
+  if (typeof value === "number" && value >= 1 && value <= 10) return value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed.replace(",", "."));
+    if (Number.isNaN(parsed) || parsed < 1 || parsed > 10) return null;
+    return parsed;
+  }
+  return null;
+}
 
 export async function loadPersistedSession(
   templateId: string,

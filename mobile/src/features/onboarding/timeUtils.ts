@@ -16,6 +16,11 @@ export function formatTimeRange(startMinutes: number, endMinutes: number): strin
   return `${minutesToTimeString(startMinutes)} – ${minutesToTimeString(endMinutes)}`;
 }
 
+/** Baslangic–bitis araligindan idman suresi (dk). */
+export function durationMinutesFromRange(startMinutes: number, endMinutes: number): number {
+  return Math.max(0, endMinutes - startMinutes);
+}
+
 /** 30 dk adimlarla min–max arasi tum zamanlar. */
 export function timeOptions(minMinutes: number, maxMinutes: number, step = 30): number[] {
   const out: number[] = [];

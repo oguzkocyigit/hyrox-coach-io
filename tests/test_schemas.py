@@ -115,3 +115,27 @@ class TestWorkoutCreate:
             exercises=[{"exercise_id": "deadlift", "sets": [_VALID_SET]}],
         )
         assert not hasattr(w, "user_id")
+
+    def test_journal_notes_optional(self):
+        w = WorkoutCreate(
+            **self._BASE,
+            exercises=[{"exercise_id": "deadlift", "sets": [_VALID_SET]}],
+        )
+        assert w.journal_notes is None
+
+    def test_journal_notes_accepts_text(self):
+        note = "Bugun bar cok agirdi, OMAD oncesi enerjim dusuktu"
+        w = WorkoutCreate(
+            **self._BASE,
+            journal_notes=note,
+            exercises=[{"exercise_id": "deadlift", "sets": [_VALID_SET]}],
+        )
+        assert w.journal_notes == note
+
+    def test_journal_notes_max_length_enforced(self):
+        with pytest.raises(ValidationError):
+            WorkoutCreate(
+                **self._BASE,
+                journal_notes="x" * 1501,
+                exercises=[{"exercise_id": "deadlift", "sets": [_VALID_SET]}],
+            )

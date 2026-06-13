@@ -121,6 +121,7 @@ export function buildSessionPayload(args: {
   logs: SessionExerciseLog[];
   durationMinutes: number;
   overallRpe: number | null;
+  journalNotes?: string;
 }): SessionPayloadResult {
   const exercises: ExerciseLog[] = [];
 
@@ -171,11 +172,14 @@ export function buildSessionPayload(args: {
     return { ok: false, message: "En az bir egzersizi tamamlandi olarak isaretle." };
   }
 
+  const trimmedNotes = args.journalNotes?.trim() ?? "";
+
   return {
     ok: true,
     payload: {
       workout_type: args.template.name,
       user_reported_rpe: args.overallRpe ?? 7,
+      journal_notes: trimmedNotes.length > 0 ? trimmedNotes : null,
       duration_minutes: Math.max(1, Math.round(args.durationMinutes)),
       exercises,
       cardio: null,

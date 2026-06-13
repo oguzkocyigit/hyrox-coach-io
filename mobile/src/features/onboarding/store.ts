@@ -15,7 +15,7 @@ import type {
   TrainingGoal,
   Zone2Habit,
 } from "@/api/types";
-import { minutesToTimeString } from "@/features/onboarding/timeUtils";
+import { durationMinutesFromRange, minutesToTimeString } from "@/features/onboarding/timeUtils";
 
 export type OnboardingAnswers = {
   goal: TrainingGoal | null;
@@ -38,8 +38,6 @@ export type OnboardingAnswers = {
   runEndMinutes: number;
   gymFedState: FedState | null;
   runFedState: FedState | null;
-  gymDurationMinutes: number;
-  runDurationMinutes: number;
   /** Opsiyonel ozel program istekleri (AI'a iletilir) */
   customProgramNotes: string;
 };
@@ -63,8 +61,6 @@ const INITIAL: OnboardingAnswers = {
   runEndMinutes: 8 * 60,
   gymFedState: null,
   runFedState: null,
-  gymDurationMinutes: 60,
-  runDurationMinutes: 45,
   customProgramNotes: "",
 };
 
@@ -86,8 +82,16 @@ export function hasOverlappingDays(s: OnboardingAnswers): boolean {
   return s.trainingDays.some((d) => run.has(d));
 }
 
-function isValidTimeRange(start: number, end: number): boolean {
-  return end > start;
+function isValidTimeRange(start: number, end: number, minMinutes: number): boolean {
+  return durationMinutesFromRange(start, end) >= minMinutes;
+}
+
+export function gymDurationMinutes(s: OnboardingAnswers): number {
+  return durationMinutesFromRange(s.gymStartMinutes, s.gymEndMinutes);
+}
+
+export function runDurationMinutes(s: OnboardingAnswers): number {
+  return durationMinutesFromRange(s.runStartMinutes, s.runEndMinutes);
 }
 
 /** Gunluk AI uretiminde kullanilabilecek hafif profil (onboarding tamamlanmamis olsa bile). */
@@ -117,8 +121,8 @@ export function buildPayload(s: OnboardingAnswers): OnboardingPayload | null {
     return null;
   }
   if (
-    !isValidTimeRange(s.gymStartMinutes, s.gymEndMinutes) ||
-    (s.wantsRunning && !isValidTimeRange(s.runStartMinutes, s.runEndMinutes))
+    !isValidTimeRange(s.gymStartMinutes, s.gymEndMinutes, 30) ||
+    (s.wantsRunning && !isValidTimeRange(s.runStartMinutes, s.runEndMinutes, 20))
   ) {
     return null;
   }
@@ -143,8 +147,8 @@ export function buildPayload(s: OnboardingAnswers): OnboardingPayload | null {
     run_preferred_end: minutesToTimeString(s.runEndMinutes),
     gym_fed_state: s.gymFedState,
     run_fed_state: s.wantsRunning ? s.runFedState! : "flexible",
-    gym_duration_minutes: s.gymDurationMinutes,
-    run_duration_minutes: s.wantsRunning ? s.runDurationMinutes : 45,
+    gym_duration_minutes: gymDurationMinutes(s),
+    run_duration_minutes: s.wantsRunning ? runDurationMinutes(s) : 45,
     five_k_pace_seconds_per_km: s.paceSecondsPerKm,
     zone2_habit: s.zone2Habit,
     sled_experience: s.sledExperience,

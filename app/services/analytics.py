@@ -257,6 +257,59 @@ async def _fetch_cardio_summary(
     return summary
 
 
+async def fetch_weekly_workout_logs(
+    db: AsyncSession, user_id: str
+) -> list[dict[str, object]]:
+    """Son 7 gunluk idman kayitlari (Pazar degerlendirmesi icin AI girdisi)."""
+    result = await db.execute(
+        text(
+            """
+            SELECT workout_log_id,
+                   date,
+                   workout_type,
+                   user_reported_rpe,
+                   duration_minutes,
+                   journal_notes
+            FROM workout_logs
+            WHERE user_id = :user_id
+              AND date >= now() - interval '7 days'
+            ORDER BY date ASC
+            """
+        ),
+        {"user_id": user_id},
+    )
+    return [
+        {
+            "workout_log_id": str(row.workout_log_id),
+            "date": row.date.isoformat(),
+            "workout_type": row.workout_type,
+            "user_reported_rpe": float(row.user_reported_rpe),
+            "duration_minutes": row.duration_minutes,
+            "journal_notes": row.journal_notes,
+        }
+        for row in result
+    ]
+
+
+async def fetch_weekly_plan_compliance(db: AsyncSession, user_id: str) -> dict[str, int]:
+    """Son 7 gun (bugun dahil) planlanan vs tamamlanan idman sayisi."""
+    result = await db.execute(
+        text(
+            """
+            SELECT count(*)::int AS planned,
+                   count(completed_at)::int AS completed
+            FROM plan_entries
+            WHERE user_id = :user_id
+              AND scheduled_date >= (current_date - interval '6 days')
+              AND scheduled_date <= current_date
+            """
+        ),
+        {"user_id": user_id},
+    )
+    row = result.one()
+    return {"planned": row.planned, "completed": row.completed}
+
+
 async def build_weekly_metrics(db: AsyncSession, user_id: str) -> WeeklyMetrics:
     """AI analiz katmanina girdi olacak haftalik metrik paketini uretir.
 

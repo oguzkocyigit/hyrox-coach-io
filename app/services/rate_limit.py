@@ -41,6 +41,8 @@ PLAN_AI_ENDPOINTS = (
     PLAN_SUGGEST_EXERCISE_ENDPOINT,
 )
 
+SUNDAY_REVIEW_ENDPOINT = "/api/v1/analysis/sunday-review"
+
 # Tier -> (limit, SQL pencere kosulu)
 _TIER_WINDOWS: dict[str, tuple[int, str]] = {
     "premium": (PREMIUM_WEEKLY_LIMIT, "requested_at >= now() - interval '7 days'"),
@@ -116,6 +118,35 @@ async def enforce_ai_rate_limit(
             detail=(
                 f"{current_user.tier.capitalize()} paketin {period} AI istek limiti "
                 f"({limit}) doldu. Limit, pencere sonunda sifirlanir."
+            ),
+        )
+
+    return current_user
+
+
+async def enforce_sunday_review_rate_limit(
+    current_user: UserProfile = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+) -> UserProfile:
+    """Pazar degerlendirme sihirbazi icin tier bazli AI limiti."""
+    if current_user.tier == "free":
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Pazar degerlendirmesi Free pakette yoktur. Premium veya Pro'ya yukseltin.",
+        )
+
+    limit, window_condition = _TIER_WINDOWS[current_user.tier]
+    used = await _count_usage(
+        db, current_user.user_id, SUNDAY_REVIEW_ENDPOINT, window_condition
+    )
+
+    if used >= limit:
+        period = "haftalik" if current_user.tier == "premium" else "gunluk"
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"{current_user.tier.capitalize()} paketin {period} Pazar degerlendirme "
+                f"limiti ({limit}) doldu. Limit, pencere sonunda sifirlanir."
             ),
         )
 

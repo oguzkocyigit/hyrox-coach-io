@@ -55,8 +55,18 @@ class OnboardingPayload(BaseModel):
     run_preferred_end: str = Field(..., pattern=_HHMM, description="Kosu bitis saati HH:MM")
     gym_fed_state: FedState
     run_fed_state: FedState
-    gym_duration_minutes: int = Field(..., ge=30, le=120)
-    run_duration_minutes: int = Field(..., ge=20, le=90)
+    gym_duration_minutes: int = Field(
+        ...,
+        ge=30,
+        le=240,
+        description="Salon idman penceresi (dk); tercih edilen baslangic–bitis araligi",
+    )
+    run_duration_minutes: int = Field(
+        ...,
+        ge=20,
+        le=180,
+        description="Kosu penceresi (dk); tercih edilen baslangic–bitis araligi",
+    )
     five_k_pace_seconds_per_km: int | None = Field(
         None, ge=180, le=720, description="5K ortalama tempo (sn/km)"
     )

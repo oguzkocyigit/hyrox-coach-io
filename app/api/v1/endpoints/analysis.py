@@ -8,14 +8,20 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db_session
+from app.schemas.ai_coach import SundayReviewPayload, SundayReviewResponse
 from app.schemas.analysis import WeeklyAnalysisResponse
 from app.schemas.user import UserProfile
 from app.services.ai_coach import (
     AIServiceNotConfiguredError,
+    generate_sunday_review,
     generate_weekly_coach_note,
 )
 from app.services.analytics import build_weekly_metrics
-from app.services.rate_limit import enforce_ai_rate_limit, record_ai_usage
+from app.services.rate_limit import (
+    enforce_ai_rate_limit,
+    enforce_sunday_review_rate_limit,
+    record_ai_usage,
+)
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -52,3 +58,28 @@ async def weekly_analysis(
         metrics=metrics,
         analysis=analysis,
     )
+
+
+@router.post(
+    "/sunday-review",
+    response_model=SundayReviewResponse,
+    summary="Pazar degerlendirme sihirbazi (tier limitli)",
+)
+async def sunday_review(
+    payload: SundayReviewPayload,
+    current_user: UserProfile = Depends(enforce_sunday_review_rate_limit),
+    db: AsyncSession = Depends(get_db_session),
+) -> SundayReviewResponse:
+    """Haftalik idman loglari + sporcunun oz-degerlendirmesini Gemini ile yorumlar.
+
+    Akis: JWT + rate-limit -> son 7 gun workout_logs (journal_notes, RPE)
+    -> mobil payload -> structured JSON koc degerlendirmesi -> kota kaydi.
+    """
+    try:
+        review = await generate_sunday_review(db, current_user.user_id, payload)
+    except AIServiceNotConfiguredError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+    await record_ai_usage(db, current_user.user_id, "/api/v1/analysis/sunday-review")
+
+    return review

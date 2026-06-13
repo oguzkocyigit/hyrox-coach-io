@@ -32,9 +32,9 @@ async def save_workout(
         text(
             """
             INSERT INTO workout_logs
-                (user_id, date, workout_type, user_reported_rpe, duration_minutes)
+                (user_id, date, workout_type, user_reported_rpe, journal_notes, duration_minutes)
             VALUES
-                (:user_id, COALESCE(:date, now()), :workout_type, :rpe, :duration)
+                (:user_id, COALESCE(:date, now()), :workout_type, :rpe, :journal_notes, :duration)
             RETURNING workout_log_id, date
             """
         ),
@@ -43,6 +43,7 @@ async def save_workout(
             "date": workout.date,
             "workout_type": workout.workout_type,
             "rpe": workout.user_reported_rpe,
+            "journal_notes": workout.journal_notes,
             "duration": workout.duration_minutes,
         },
     )

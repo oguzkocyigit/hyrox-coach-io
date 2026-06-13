@@ -1,13 +1,17 @@
 /**
- * Salon veya kosu icin kompakt zamanlama karti:
- * baslangic / bitis saati + idman suresi kaydiricisi.
+ * Salon veya kosu icin saat araligi secimi (baslangic / bitis).
+ * Idman suresi araliktan otomatik turetilir.
  */
 
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
-import { Slider } from "@/features/onboarding/Slider";
-import { formatTimeRange, minutesToTimeString, timeOptions } from "@/features/onboarding/timeUtils";
+import {
+  durationMinutesFromRange,
+  formatTimeRange,
+  minutesToTimeString,
+  timeOptions,
+} from "@/features/onboarding/timeUtils";
 import { color, radius, space, type } from "@/ui/tokens";
 
 type SessionScheduleCardProps = {
@@ -15,17 +19,13 @@ type SessionScheduleCardProps = {
   icon: keyof typeof Ionicons.glyphMap;
   startMinutes: number;
   endMinutes: number;
-  durationMinutes: number;
-  durationMin: number;
-  durationMax: number;
-  durationStep?: number;
   onStartChange: (minutes: number) => void;
   onEndChange: (minutes: number) => void;
-  onDurationChange: (minutes: number) => void;
 };
 
 const DAY_START = 5 * 60;
 const DAY_END = 22 * 60;
+const MIN_WINDOW = 30;
 
 function TimeChip({
   value,
@@ -82,16 +82,12 @@ export function SessionScheduleCard({
   icon,
   startMinutes,
   endMinutes,
-  durationMinutes,
-  durationMin,
-  durationMax,
-  durationStep = 5,
   onStartChange,
   onEndChange,
-  onDurationChange,
 }: SessionScheduleCardProps) {
-  const startOptions = timeOptions(DAY_START, DAY_END - 30);
-  const endOptions = timeOptions(startMinutes + 30, DAY_END);
+  const startOptions = timeOptions(DAY_START, DAY_END - MIN_WINDOW);
+  const endOptions = timeOptions(startMinutes + MIN_WINDOW, DAY_END);
+  const duration = durationMinutesFromRange(startMinutes, endMinutes);
 
   return (
     <View style={styles.card}>
@@ -101,26 +97,14 @@ export function SessionScheduleCard({
         </View>
         <View style={styles.headerTexts}>
           <Text style={styles.title}>{title}</Text>
-          <Text style={styles.rangeHint}>{formatTimeRange(startMinutes, endMinutes)}</Text>
+          <Text style={styles.rangeHint}>
+            {formatTimeRange(startMinutes, endMinutes)} · ~{duration} dk
+          </Text>
         </View>
       </View>
 
       <TimeRow label="BASLANGIC" value={startMinutes} options={startOptions} onChange={onStartChange} />
       <TimeRow label="BITIS" value={endMinutes} options={endOptions} onChange={onEndChange} />
-
-      <View style={styles.durationBlock}>
-        <Text style={styles.durationLabel}>IDMAN SURESI</Text>
-        <Slider
-          min={durationMin}
-          max={durationMax}
-          step={durationStep}
-          value={durationMinutes}
-          onChange={onDurationChange}
-          formatValue={(v) => `${v} dk`}
-          minLabel={`${durationMin} dk`}
-          maxLabel={`${durationMax} dk`}
-        />
-      </View>
     </View>
   );
 }
@@ -190,15 +174,5 @@ const styles = StyleSheet.create({
   },
   chipTextSelected: {
     color: color.text.primary,
-  },
-  durationBlock: {
-    borderTopWidth: 1,
-    borderTopColor: color.stroke.subtle,
-    paddingTop: space.md,
-    gap: space.xs,
-  },
-  durationLabel: {
-    ...type.micro,
-    color: color.text.secondary,
   },
 });

@@ -24,6 +24,8 @@ import type {
   OnboardingPayload,
   PlanEntry,
   PlanEntryCreate,
+  SundayReviewPayload,
+  SundayReviewResponse,
   UserProfile,
   UserProfileUpdate,
   WeekPlanResponse,
@@ -118,6 +120,13 @@ export function useWeeklyAnalysis() {
   return useMutation({
     mutationFn: () =>
       api.post<WeeklyAnalysisResponse>("/api/v1/analysis/weekly", {}),
+  });
+}
+
+export function useSundayReview() {
+  return useMutation({
+    mutationFn: (payload: SundayReviewPayload) =>
+      api.post<SundayReviewResponse>("/api/v1/analysis/sunday-review", payload),
   });
 }
 

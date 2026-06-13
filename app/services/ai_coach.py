@@ -17,6 +17,7 @@ from google.genai import types as genai_types
 from pydantic import ValidationError
 
 from app.core.config import get_settings
+from app.schemas.ai_coach import SundayReviewPayload, SundayReviewResponse
 from app.schemas.ai_plan import (
     AiModifyResponse,
     AiPlanResponse,
@@ -43,6 +44,13 @@ from app.services.plan_coercion import (
     parse_ai_response,
     parse_ai_single_day,
     parse_ai_suggest_exercise,
+)
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.services.analytics import (
+    build_weekly_metrics,
+    fetch_weekly_plan_compliance,
+    fetch_weekly_workout_logs,
 )
 
 # Blueprint'teki rol tanimi (sayfa sonu prompt spesifikasyonu)
@@ -117,9 +125,9 @@ PLAN_SYSTEM_INSTRUCTION = (
     "4b. GOAL — strength: prioritize heavy lifts; conditioning: engine/metcon; "
     "hyrox: race stations + run integration; hybrid: balanced strength+engine; "
     "crossfit: varied WODs and skill work.\n"
-    "5. DURATION — Total work (including rest) should approximate gym_duration_minutes "
-    "for gym sessions and run_duration_minutes for running sessions. Scale sets, "
-    "rounds and distances accordingly.\n"
+    "5. DURATION — gym_duration_minutes and run_duration_minutes equal the athlete's "
+    "preferred time WINDOW (end minus start from gym_preferred_* / run_preferred_*). "
+    "Scale total work (including rest) to fit within that window (±10%).\n"
     "6. Measurement rules are mandatory: measurement 'reps' requires reps; 'time' "
     "requires duration_seconds; 'distance' requires distance_m.\n"
     "7. template.workout_type must be one of: hybrid, running, strength, metcon, "
@@ -224,6 +232,24 @@ SUGGEST_EXERCISE_SYSTEM_INSTRUCTION = (
     "8. Equipment/skill limits from athlete_context.\n"
     "9. coach_note: 1 short Turkish sentence explaining WHY this exercise.\n"
     "Output: STRICT JSON matching the response schema. No extra commentary."
+)
+
+SUNDAY_REVIEW_SYSTEM_INSTRUCTION = (
+    "Role: Elite hybrid performance coach conducting the athlete's weekly Sunday review.\n"
+    "Task: Analyze workout logs (especially journal_notes and user_reported_rpe), "
+    "the athlete's self-reported nutrition adherence, recovery feeling, missed "
+    "workout context, plan compliance, and deterministic weekly metrics "
+    "(muscle volume, CNS load, overtraining flags).\n"
+    "Tone: Empathic but direct — like a world-class coach who reads between the lines.\n"
+    "Language: Write ALL text fields in TURKISH.\n"
+    "Output STRICT JSON:\n"
+    "- review_summary: 3-5 sentences evaluating the week holistically\n"
+    "- next_week_adjustments: 2-4 tactical recommendations as one string "
+    "(use bullet lines with '- ' prefix)\n"
+    "- readiness_score: integer 1-10 for readiness to push next week "
+    "(1=needs deload/rest, 10=prime to attack)\n"
+    "Never diagnose medical conditions. If injury is mentioned, advise caution "
+    "and smart volume modification."
 )
 
 
@@ -392,3 +418,56 @@ async def suggest_exercise_with_ai(
         coerce_fn=coerce_ai_suggest_exercise,
         max_output_tokens=2048,
     )
+
+
+async def generate_sunday_review(
+    db: AsyncSession,
+    user_id: str,
+    payload: SundayReviewPayload,
+) -> SundayReviewResponse:
+    """Son 7 gunluk loglar + mobil oz-degerlendirmeyi Gemini ile haftalik koc notuna donusturur."""
+    workout_logs = await fetch_weekly_workout_logs(db, user_id)
+    plan_compliance = await fetch_weekly_plan_compliance(db, user_id)
+    metrics = await build_weekly_metrics(db, user_id)
+
+    context = {
+        "athlete_reflection": payload.model_dump(),
+        "plan_compliance": plan_compliance,
+        "workout_logs_last_7_days": workout_logs,
+        "weekly_metrics": metrics.model_dump(),
+    }
+
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        raise AIServiceNotConfiguredError(
+            "GEMINI_API_KEY tanimli degil. .env dosyasina ekleyin."
+        )
+
+    client = genai.Client(api_key=settings.gemini_api_key)
+    last_error: Exception | None = None
+
+    for attempt in range(3):
+        try:
+            response = await client.aio.models.generate_content(
+                model=settings.gemini_model,
+                contents=(
+                    "Weekly Sunday review context (deterministic metrics + athlete input):\n"
+                    + json.dumps(context, ensure_ascii=False, indent=2)
+                ),
+                config=genai_types.GenerateContentConfig(
+                    system_instruction=SUNDAY_REVIEW_SYSTEM_INSTRUCTION,
+                    response_mime_type="application/json",
+                    response_schema=SundayReviewResponse,
+                    temperature=0.65 + attempt * 0.05,
+                    max_output_tokens=1024,
+                ),
+            )
+            if not response.text:
+                raise ValueError("Gemini bos yanit dondurdu.")
+            return SundayReviewResponse.model_validate_json(response.text)
+        except (ValidationError, ValueError) as exc:
+            last_error = exc
+            continue
+
+    assert last_error is not None
+    raise last_error

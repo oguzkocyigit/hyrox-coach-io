@@ -209,11 +209,11 @@ export default function OnboardingScreen() {
     },
     {
       title: "Zamanlama",
-      subtitle: "Salon ve kosu icin tercih ettigin saat araligi ve sure.",
+      subtitle: "Salon ve kosu icin idman yapabilecegin saat araligini sec.",
       valid:
-        store.gymEndMinutes > store.gymStartMinutes &&
+        store.gymEndMinutes - store.gymStartMinutes >= 30 &&
         (!hasOverlappingDays(store) || store.splitRunAndGym != null) &&
-        (!store.wantsRunning || store.runEndMinutes > store.runStartMinutes),
+        (!store.wantsRunning || store.runEndMinutes - store.runStartMinutes >= 20),
       content: (
         <View style={styles.options}>
           {hasOverlappingDays(store) ? (
@@ -236,9 +236,6 @@ export default function OnboardingScreen() {
             icon="barbell-outline"
             startMinutes={store.gymStartMinutes}
             endMinutes={store.gymEndMinutes}
-            durationMinutes={store.gymDurationMinutes}
-            durationMin={30}
-            durationMax={120}
             onStartChange={(gymStartMinutes) =>
               store.set({
                 gymStartMinutes,
@@ -246,7 +243,6 @@ export default function OnboardingScreen() {
               })
             }
             onEndChange={(gymEndMinutes) => store.set({ gymEndMinutes })}
-            onDurationChange={(gymDurationMinutes) => store.set({ gymDurationMinutes })}
           />
           {store.wantsRunning ? (
             <SessionScheduleCard
@@ -254,9 +250,6 @@ export default function OnboardingScreen() {
               icon="footsteps-outline"
               startMinutes={store.runStartMinutes}
               endMinutes={store.runEndMinutes}
-              durationMinutes={store.runDurationMinutes}
-              durationMin={20}
-              durationMax={90}
               onStartChange={(runStartMinutes) =>
                 store.set({
                   runStartMinutes,
@@ -264,7 +257,6 @@ export default function OnboardingScreen() {
                 })
               }
               onEndChange={(runEndMinutes) => store.set({ runEndMinutes })}
-              onDurationChange={(runDurationMinutes) => store.set({ runDurationMinutes })}
             />
           ) : null}
         </View>

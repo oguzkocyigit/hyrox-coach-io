@@ -19,6 +19,7 @@ import type { GeneratedDayWorkout, SessionKind } from "@/api/types";
 import { Slider } from "@/features/onboarding/Slider";
 import {
   buildAthleteContext,
+  gymDurationMinutes,
   useOnboardingStore,
 } from "@/features/onboarding/store";
 import { color, radius, space, type } from "@/ui/tokens";
@@ -49,8 +50,9 @@ export function DayWorkoutAISheet({
   const generate = useGenerateDayWorkout();
 
   const defaultDuration = useMemo(() => {
-    return onboarding.gymDurationMinutes || 60;
-  }, [onboarding.gymDurationMinutes]);
+    const d = gymDurationMinutes(onboarding);
+    return d > 0 ? d : 60;
+  }, [onboarding.gymStartMinutes, onboarding.gymEndMinutes]);
 
   const [sessionKind, setSessionKind] = useState<SessionKind>("gym");
   const [durationMinutes, setDurationMinutes] = useState(defaultDuration);

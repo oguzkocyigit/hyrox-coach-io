@@ -42,6 +42,7 @@ import { WorkoutDetailSheet } from "@/features/program/WorkoutDetailSheet";
 import { WorkoutLibrarySheet } from "@/features/program/WorkoutLibrarySheet";
 import { WorkoutModifyAISheet } from "@/features/program/WorkoutModifyAISheet";
 import { WorkoutSessionSheet } from "@/features/program/WorkoutSessionSheet";
+import { SundayReviewWizard } from "@/features/coach/SundayReviewWizard";
 import { Screen } from "@/ui/Screen";
 import { color, radius, space, type } from "@/ui/tokens";
 
@@ -92,6 +93,7 @@ export default function ProgramScreen() {
   const [dayAiVisible, setDayAiVisible] = useState(false);
   const [modifyEntry, setModifyEntry] = useState<PlanEntry | null>(null);
   const [sessionEntry, setSessionEntry] = useState<PlanEntry | null>(null);
+  const [sundayReviewVisible, setSundayReviewVisible] = useState(false);
 
   const scheduleEntry = useScheduleEntry();
   const createTemplate = useCreateTemplate();
@@ -108,6 +110,9 @@ export default function ProgramScreen() {
   }, [plan]);
 
   const todayIso = toIsoDate(new Date());
+  const currentWeekStartIso = toIsoDate(mondayOf(new Date()));
+  const isCurrentWeek = weekStartIso === currentWeekStartIso;
+  const isSunday = new Date().getDay() === 0;
   const completedCount = (plan?.entries ?? []).filter((e) => e.completed_at).length;
   const totalCount = plan?.entries.length ?? 0;
 
@@ -245,6 +250,31 @@ export default function ProgramScreen() {
           <Ionicons name="chevron-forward" size={20} color={color.text.primary} />
         </Pressable>
       </View>
+
+      {isCurrentWeek ? (
+        <Pressable
+          onPress={() => setSundayReviewVisible(true)}
+          style={({ pressed }) => [
+            styles.sundayReviewCard,
+            isSunday && styles.sundayReviewCardHighlight,
+            pressed && styles.sundayReviewCardPressed,
+          ]}
+          accessibilityLabel="Pazar degerlendirme sihirbazi"
+        >
+          <View style={styles.sundayReviewIcon}>
+            <Ionicons name="sparkles" size={18} color={color.accent.ink} />
+          </View>
+          <View style={styles.sundayReviewTexts}>
+            <Text style={styles.sundayReviewTitle}>Pazar Degerlendirmesi</Text>
+            <Text style={styles.sundayReviewMeta}>
+              {totalCount > 0
+                ? `${completedCount}/${totalCount} idman · AI haftalik koc ozeti`
+                : "Haftalik notlarin ve toparlanman icin AI koc degerlendirmesi"}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={color.text.secondary} />
+        </Pressable>
+      ) : null}
 
       {isLoading ? (
         <ActivityIndicator color={color.accent.primary} style={styles.loading} />
@@ -442,6 +472,13 @@ export default function ProgramScreen() {
         onClose={() => setSessionEntry(null)}
         onCompleted={() => void refetch()}
       />
+
+      <SundayReviewWizard
+        visible={sundayReviewVisible}
+        onClose={() => setSundayReviewVisible(false)}
+        plannedCount={totalCount}
+        completedCount={completedCount}
+      />
     </Screen>
   );
 }
@@ -518,6 +555,44 @@ const styles = StyleSheet.create({
   },
   weekProgress: {
     ...type.micro,
+    color: color.text.secondary,
+  },
+  sundayReviewCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.md,
+    backgroundColor: color.bg.surface,
+    borderWidth: 1,
+    borderColor: color.stroke.subtle,
+    borderRadius: radius.lg,
+    padding: space.lg,
+    marginBottom: space.lg,
+  },
+  sundayReviewCardHighlight: {
+    borderColor: color.accent.primary,
+    backgroundColor: color.accent.subtle,
+  },
+  sundayReviewCardPressed: {
+    opacity: 0.85,
+  },
+  sundayReviewIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: color.accent.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sundayReviewTexts: {
+    flex: 1,
+    gap: 2,
+  },
+  sundayReviewTitle: {
+    ...type.bodyStrong,
+    color: color.text.primary,
+  },
+  sundayReviewMeta: {
+    ...type.small,
     color: color.text.secondary,
   },
   loading: {
