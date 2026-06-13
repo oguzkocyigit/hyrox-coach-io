@@ -68,6 +68,19 @@ class OnboardingPayload(BaseModel):
     )
     nutrition_constraint: NutritionConstraint
     equipment: EquipmentLevel
+    custom_program_notes: str | None = Field(
+        None,
+        max_length=1500,
+        description="Kullanicinin ozel program istekleri (gun bazli veya genel dagilim)",
+    )
+
+    @field_validator("custom_program_notes")
+    @classmethod
+    def normalize_custom_notes(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        stripped = v.strip()
+        return stripped if stripped else None
 
     @field_validator("training_days", "running_days")
     @classmethod

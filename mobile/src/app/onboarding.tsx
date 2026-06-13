@@ -15,13 +15,14 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError } from "@/api/client";
 import { useCreateTemplate, useGeneratePlan, useScheduleEntry } from "@/api/hooks";
-import type { GeneratedWeekPlan } from "@/api/types";
+import type { GeneratedDay, GeneratedWeekPlan, WorkoutTemplate, WorkoutTemplateCreate } from "@/api/types";
 import { OptionCard } from "@/features/onboarding/OptionCard";
 import { DayPicker } from "@/features/onboarding/DayPicker";
 import { SessionScheduleCard } from "@/features/onboarding/SessionScheduleCard";
@@ -44,6 +45,8 @@ import {
   exerciseSummary,
   typeMeta,
 } from "@/features/program/constants";
+import { normalizeWorkoutTemplate } from "@/features/program/normalizeTemplate";
+import { WorkoutDetailSheet } from "@/features/program/WorkoutDetailSheet";
 import { Button } from "@/ui/Button";
 import { color, font, radius, space, type } from "@/ui/tokens";
 
@@ -63,11 +66,26 @@ function mondayOf(d: Date): Date {
   return result;
 }
 
+/** Onizleme detay modali icin gecici sablon (henuz DB'de yok). */
+function asPreviewTemplate(
+  template: WorkoutTemplateCreate,
+  dayOfWeek: number,
+): WorkoutTemplate {
+  const now = new Date().toISOString();
+  return normalizeWorkoutTemplate({
+    ...template,
+    template_id: `preview-${dayOfWeek}`,
+    created_at: now,
+    updated_at: now,
+  });
+}
+
 export default function OnboardingScreen() {
   const insets = useSafeAreaInsets();
   const store = useOnboardingStore();
   const [stepIndex, setStepIndex] = useState(0);
   const [applying, setApplying] = useState(false);
+  const [previewDay, setPreviewDay] = useState<GeneratedDay | null>(null);
 
   const generate = useGeneratePlan();
   const createTemplate = useCreateTemplate();
@@ -329,6 +347,37 @@ export default function OnboardingScreen() {
         </View>
       ),
     },
+    {
+      title: "Ozel isteklerin var mi?",
+      subtitle: "Gun bazli veya genel program tercihlerini yaz. Bos birakabilirsin.",
+      valid: store.customProgramNotes.length <= 1500,
+      content: (
+        <View style={styles.options}>
+          <View style={styles.notesCard}>
+            <Text style={styles.notesHint}>Ornek istekler:</Text>
+            <Text style={styles.notesExample}>
+              • 5 salon idmanindan 2'si upper hipertrofi, 2'si CrossFit full body
+              metcon, 1'i Cumartesi HYROX simulate{"\n"}
+              • Carsamba sadece teknik calisma, agirlik yok{"\n"}
+              • Pazartesi ve Persembe sled istasyonu olsun
+            </Text>
+            <TextInput
+              style={styles.notesInput}
+              value={store.customProgramNotes}
+              onChangeText={(text) => store.set({ customProgramNotes: text })}
+              placeholder="Isteklerini buraya yaz..."
+              placeholderTextColor={color.text.disabled}
+              multiline
+              textAlignVertical="top"
+              maxLength={1500}
+            />
+            <Text style={styles.notesCounter}>
+              {store.customProgramNotes.length}/1500
+            </Text>
+          </View>
+        </View>
+      ),
+    },
   ];
 
   const isLastStep = stepIndex === steps.length - 1;
@@ -384,7 +433,7 @@ export default function OnboardingScreen() {
         <ActivityIndicator size="large" color={color.accent.primary} />
         <Text style={styles.loadingTitle}>Plan hazirlaniyor</Text>
         <Text style={styles.loadingText}>
-          AI koc; hedefini, toparlanma kapasiteni ve ekipmanini degerlendiriyor...
+          AI koc; hedefini, ozel isteklerini ve ekipmanini degerlendiriyor...
         </Text>
       </View>
     );
@@ -422,32 +471,55 @@ export default function OnboardingScreen() {
             .map((day) => {
               const meta = typeMeta(day.template.workout_type);
               return (
-                <View key={day.day_of_week} style={styles.dayCard}>
+                <Pressable
+                  key={day.day_of_week}
+                  onPress={() => setPreviewDay(day)}
+                  style={({ pressed }) => [styles.dayCard, pressed && styles.dayCardPressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${DAY_LABELS[day.day_of_week]} idman detayi`}
+                >
                   <View style={styles.dayCardHeader}>
                     <Text style={styles.dayCardDay}>
                       {DAY_LABELS[day.day_of_week] ?? `Gun ${day.day_of_week + 1}`}
                     </Text>
-                    <View style={[styles.typeBadge, { borderColor: meta.dot }]}>
-                      <View style={[styles.dot, { backgroundColor: meta.dot }]} />
-                      <Text style={styles.typeBadgeText}>{meta.label}</Text>
+                    <View style={styles.dayCardHeaderRight}>
+                      <View style={[styles.typeBadge, { borderColor: meta.dot }]}>
+                        <View style={[styles.dot, { backgroundColor: meta.dot }]} />
+                        <Text style={styles.typeBadgeText}>{meta.label}</Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={16} color={color.text.secondary} />
                     </View>
                   </View>
                   <Text style={styles.dayCardName}>{day.template.name}</Text>
                   <Text style={styles.dayCardFocus}>{day.focus}</Text>
                   <Text style={styles.dayCardMeta}>
                     ~{estimateDurationMinutes(day.template)} dk ·{" "}
-                    {day.template.exercises.length} egzersiz
+                    {day.template.exercises.length} egzersiz · Detay icin dokun
                   </Text>
                   <View style={styles.exerciseList}>
-                    {day.template.exercises.map((e, i) => (
+                    {day.template.exercises.slice(0, 3).map((e, i) => (
                       <Text key={i} style={styles.exerciseLine} numberOfLines={1}>
-                        {i + 1}. {e.name} — {exerciseSummary(e)}
+                        {i + 1}. {e.name} — {exerciseSummary(e, day.template.format)}
                       </Text>
                     ))}
+                    {day.template.exercises.length > 3 ? (
+                      <Text style={styles.exerciseMore}>
+                        +{day.template.exercises.length - 3} egzersiz daha
+                      </Text>
+                    ) : null}
                   </View>
-                </View>
+                </Pressable>
               );
             })}
+
+          <WorkoutDetailSheet
+            visible={previewDay != null}
+            template={
+              previewDay ? asPreviewTemplate(previewDay.template, previewDay.day_of_week) : null
+            }
+            focus={previewDay?.focus}
+            onClose={() => setPreviewDay(null)}
+          />
 
           <Button
             label="Bu Haftaya Ekle"
@@ -697,10 +769,19 @@ const styles = StyleSheet.create({
     padding: space.lg,
     gap: space.xs,
   },
+  dayCardPressed: {
+    borderColor: color.accent.primary,
+    backgroundColor: color.accent.subtle,
+  },
   dayCardHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  dayCardHeaderRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
   },
   dayCardDay: {
     ...type.micro,
@@ -745,5 +826,45 @@ const styles = StyleSheet.create({
   exerciseLine: {
     ...type.small,
     color: color.text.primary,
+  },
+  exerciseMore: {
+    ...type.small,
+    color: color.text.secondary,
+    fontStyle: "italic",
+    marginLeft: space.sm,
+  },
+  notesCard: {
+    backgroundColor: color.bg.surface,
+    borderWidth: 1,
+    borderColor: color.stroke.subtle,
+    borderRadius: radius.lg,
+    padding: space.lg,
+    gap: space.sm,
+  },
+  notesHint: {
+    ...type.micro,
+    color: color.text.secondary,
+  },
+  notesExample: {
+    ...type.small,
+    color: color.text.secondary,
+    lineHeight: 20,
+  },
+  notesInput: {
+    minHeight: 140,
+    backgroundColor: color.bg.elevated,
+    borderWidth: 1,
+    borderColor: color.stroke.subtle,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    color: color.text.primary,
+    ...type.body,
+    marginTop: space.sm,
+  },
+  notesCounter: {
+    ...type.micro,
+    color: color.text.secondary,
+    textAlign: "right",
   },
 });

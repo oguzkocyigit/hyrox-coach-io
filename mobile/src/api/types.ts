@@ -311,6 +311,8 @@ export interface OnboardingPayload {
   weekend_conditioning: boolean;
   nutrition_constraint: NutritionConstraint;
   equipment: EquipmentLevel;
+  /** Opsiyonel: gun bazli veya genel program istekleri */
+  custom_program_notes?: string | null;
 }
 
 export interface GeneratedDay {

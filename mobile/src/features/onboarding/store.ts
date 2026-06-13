@@ -40,6 +40,8 @@ export type OnboardingAnswers = {
   runFedState: FedState | null;
   gymDurationMinutes: number;
   runDurationMinutes: number;
+  /** Opsiyonel ozel program istekleri (AI'a iletilir) */
+  customProgramNotes: string;
 };
 
 const INITIAL: OnboardingAnswers = {
@@ -63,6 +65,7 @@ const INITIAL: OnboardingAnswers = {
   runFedState: null,
   gymDurationMinutes: 60,
   runDurationMinutes: 45,
+  customProgramNotes: "",
 };
 
 type OnboardingStore = OnboardingAnswers & {
@@ -149,5 +152,6 @@ export function buildPayload(s: OnboardingAnswers): OnboardingPayload | null {
     weekend_conditioning: s.weekendConditioning,
     nutrition_constraint: s.nutritionConstraint,
     equipment: s.equipment,
+    custom_program_notes: s.customProgramNotes.trim() || null,
   };
 }

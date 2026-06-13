@@ -22,6 +22,8 @@ type WorkoutDetailSheetProps = {
   visible: boolean;
   template: WorkoutTemplate | null;
   onClose: () => void;
+  /** AI gunluk odak cumlesi (onboarding onizleme) */
+  focus?: string;
   /** Canli idman oturumunu baslat */
   onStart?: (template: WorkoutTemplate) => void;
   /** Verilirse sag ustte "Duzenle" gosterilir */
@@ -34,6 +36,7 @@ export function WorkoutDetailSheet({
   visible,
   template,
   onClose,
+  focus,
   onStart,
   onEdit,
   onModifyAI,
@@ -100,6 +103,8 @@ export function WorkoutDetailSheet({
           </View>
 
           <Text style={styles.title}>{template.name}</Text>
+
+          {focus ? <Text style={styles.focusLine}>{focus}</Text> : null}
 
           <View style={styles.metaRow}>
             <Ionicons name="time-outline" size={15} color={color.text.secondary} />
@@ -201,6 +206,11 @@ const styles = StyleSheet.create({
   title: {
     ...type.displayLg,
     color: color.text.primary,
+  },
+  focusLine: {
+    ...type.body,
+    color: color.text.secondary,
+    fontStyle: "italic",
   },
   metaRow: {
     flexDirection: "row",
