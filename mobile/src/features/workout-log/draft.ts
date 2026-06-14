@@ -69,6 +69,11 @@ export function buildPayload(args: {
   workoutType: string;
   rpe: number | null;
   duration: string;
+  calories: string;
+  /** Gecmise donuk kayit / manuel saat icin ISO tarih; bugun+saatsiz ise null. */
+  dateISO?: string | null;
+  /** Baslangic-bitis araligindan turetilmis sure (dk); varsa duration alanini ezer. */
+  derivedDurationMinutes?: number | null;
   exercises: ExerciseDraft[];
   cardio: CardioDraft | null;
 }): DraftValidation {
@@ -79,9 +84,18 @@ export function buildPayload(args: {
   if (args.rpe === null) {
     return { ok: false, message: "Idman geneli RPE sec (1-10)." };
   }
-  const duration = parseNum(args.duration);
+  const duration = args.derivedDurationMinutes ?? parseNum(args.duration);
   if (duration === null || duration <= 0) {
-    return { ok: false, message: "Gecerli bir sure gir (dakika)." };
+    return { ok: false, message: "Gecerli bir sure gir (dakika) ya da baslangic/bitis saati." };
+  }
+
+  let caloriesBurned: number | null = null;
+  if (args.calories.trim() !== "") {
+    const c = parseNum(args.calories);
+    if (c === null || c < 0 || c > 20000) {
+      return { ok: false, message: "Kalori 0-20000 arasi olmali (kcal)." };
+    }
+    caloriesBurned = Math.round(c);
   }
 
   const valueLabels: Record<SetMeasurement, string> = {
@@ -162,6 +176,8 @@ export function buildPayload(args: {
       workout_type: workoutType,
       user_reported_rpe: args.rpe,
       duration_minutes: Math.round(duration),
+      calories_burned: caloriesBurned,
+      date: args.dateISO ?? null,
       exercises: exercises.length > 0 ? exercises : null,
       cardio,
     },

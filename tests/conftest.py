@@ -98,7 +98,10 @@ async def db_session():
     from app.core.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        finally:
+            await session.rollback()
 
 
 @pytest.fixture(autouse=True)

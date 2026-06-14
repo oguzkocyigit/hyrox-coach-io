@@ -19,6 +19,8 @@ import {
 } from "@/features/workout-log/draft";
 import { ExercisePicker } from "@/features/workout-log/ExercisePicker";
 import { ResultSheet } from "@/features/workout-log/ResultSheet";
+import { WhenField } from "@/features/workout-log/WhenField";
+import { resolveWhen, todayWhen, type WhenState } from "@/features/workout-log/when";
 import { Button } from "@/ui/Button";
 import { Screen } from "@/ui/Screen";
 import { TextField } from "@/ui/TextField";
@@ -45,6 +47,8 @@ function measurementMeta(id: SetMeasurement) {
 export default function LogWorkoutScreen() {
   const [workoutType, setWorkoutType] = useState("");
   const [duration, setDuration] = useState("");
+  const [calories, setCalories] = useState("");
+  const [when, setWhen] = useState<WhenState>(todayWhen);
   const [rpe, setRpe] = useState<number | null>(null);
   const [exercises, setExercises] = useState<ExerciseDraft[]>([]);
   const [cardio, setCardio] = useState<CardioDraft | null>(null);
@@ -99,6 +103,8 @@ export default function LogWorkoutScreen() {
   const resetForm = () => {
     setWorkoutType("");
     setDuration("");
+    setCalories("");
+    setWhen(todayWhen());
     setRpe(null);
     setExercises([]);
     setCardio(null);
@@ -107,7 +113,17 @@ export default function LogWorkoutScreen() {
 
   const onSubmit = () => {
     setFormError(null);
-    const validation = buildPayload({ workoutType, rpe, duration, exercises, cardio });
+    const resolved = resolveWhen(when);
+    const validation = buildPayload({
+      workoutType,
+      rpe,
+      duration,
+      calories,
+      dateISO: resolved.dateISO,
+      derivedDurationMinutes: resolved.durationMinutes,
+      exercises,
+      cardio,
+    });
     if (!validation.ok) {
       setFormError(validation.message);
       return;
@@ -131,12 +147,24 @@ export default function LogWorkoutScreen() {
           placeholder="Full Body, Zone 2 Run, Hyrox Sim..."
         />
 
+        <WhenField value={when} onChange={setWhen} />
+
+        {when.startMin != null && when.endMin != null && when.endMin > when.startMin ? null : (
+          <TextField
+            label="Sure (dakika)"
+            value={duration}
+            onChangeText={setDuration}
+            keyboardType="number-pad"
+            placeholder="60"
+          />
+        )}
+
         <TextField
-          label="Sure (dakika)"
-          value={duration}
-          onChangeText={setDuration}
+          label="Kalori (kcal) — opsiyonel"
+          value={calories}
+          onChangeText={setCalories}
           keyboardType="number-pad"
-          placeholder="60"
+          placeholder="450"
         />
 
         {/* RPE secimi */}

@@ -4,7 +4,7 @@
 
 import { create } from "zustand";
 
-import type { SundayReviewPayload, SundayReviewResponse } from "@/api/types";
+import type { SundayReviewPayload, SundayReviewRecord } from "@/api/types";
 
 export const MISSED_MAX_LENGTH = 2000;
 export const RECOVERY_MAX_LENGTH = 1500;
@@ -14,7 +14,7 @@ export type SundayReviewAnswers = {
   missedReason: string;
   nutritionAdherence: number;
   recoveryFeeling: string;
-  reviewResult: SundayReviewResponse | null;
+  reviewResult: SundayReviewRecord | null;
 };
 
 const INITIAL: SundayReviewAnswers = {

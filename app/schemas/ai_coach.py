@@ -34,3 +34,20 @@ class SundayReviewResponse(BaseModel):
     review_summary: str = Field(..., min_length=1)
     next_week_adjustments: str = Field(..., min_length=1)
     readiness_score: int = Field(..., ge=1, le=10)
+
+
+class SundayReviewRecord(SundayReviewResponse):
+    """Kalici kayit + kullanici girdisi (GET yaniti)."""
+
+    review_id: str
+    missed_workouts_reason: str
+    nutrition_adherence: int
+    recovery_feeling: str
+    created_at: str
+
+
+class SundayReviewStatusResponse(BaseModel):
+    """Bu hafta degerlendirme yapildi mi (mobil badge)."""
+
+    completed_this_week: bool
+    latest: SundayReviewRecord | None = None

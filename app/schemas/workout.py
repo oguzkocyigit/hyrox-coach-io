@@ -93,6 +93,12 @@ class WorkoutCreate(BaseModel):
         description="Idman sonrasi serbest metin gunluk (enerji, agirlik hissi, beslenme vb.)",
     )
     duration_minutes: int = Field(..., gt=0)
+    calories_burned: int | None = Field(
+        None,
+        ge=0,
+        le=20000,
+        description="Idmanda harcanan enerji (kcal); opsiyonel, manuel girilir",
+    )
     date: datetime | None = Field(None, description="Bos birakilirsa sunucu zamani kullanilir")
     exercises: list[ExerciseLog] | None = None
     cardio: CardioLog | None = None
@@ -117,6 +123,7 @@ class WorkoutSummary(BaseModel):
     user_reported_rpe: float
     total_strength_sets: int
     cardio_distance_km: float | None = None
+    calories_burned: int | None = None
 
 
 class MuscleWeeklyLoad(BaseModel):
@@ -164,6 +171,8 @@ class WorkoutHistoryItem(BaseModel):
     workout_type: str
     user_reported_rpe: float
     duration_minutes: int
+    calories_burned: int | None = None
+    journal_notes: str | None = None
     exercises: list[ExerciseDetailOut] = Field(default_factory=list)
     cardio: list[CardioDetailOut] = Field(default_factory=list)
 

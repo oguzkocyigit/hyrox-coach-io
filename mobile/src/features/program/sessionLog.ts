@@ -122,6 +122,10 @@ export function buildSessionPayload(args: {
   durationMinutes: number;
   overallRpe: number | null;
   journalNotes?: string;
+  /** Harcanan kalori (kcal); opsiyonel. */
+  caloriesBurned?: number | null;
+  /** Gecmise donuk / manuel saat kaydi icin ISO tarih; bos ise sunucu zamani. */
+  dateISO?: string | null;
 }): SessionPayloadResult {
   const exercises: ExerciseLog[] = [];
 
@@ -181,6 +185,8 @@ export function buildSessionPayload(args: {
       user_reported_rpe: args.overallRpe ?? 7,
       journal_notes: trimmedNotes.length > 0 ? trimmedNotes : null,
       duration_minutes: Math.max(1, Math.round(args.durationMinutes)),
+      calories_burned: args.caloriesBurned ?? null,
+      date: args.dateISO ?? null,
       exercises,
       cardio: null,
     },

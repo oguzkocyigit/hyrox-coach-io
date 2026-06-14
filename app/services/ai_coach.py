@@ -52,6 +52,7 @@ from app.services.analytics import (
     fetch_weekly_plan_compliance,
     fetch_weekly_workout_logs,
 )
+from app.services.coaching_context import build_plan_coaching_context
 from app.services.template_retrieval import (
     fetch_coach_template_catalog,
     fetch_coach_templates_by_ids,
@@ -124,9 +125,15 @@ PLAN_SYSTEM_INSTRUCTION = (
     "changes minimal (max 2-3 per day).\n"
     "5. CNS recovery — do not stack the heaviest templates on consecutive days; "
     "place hard sessions after rest or light days.\n"
-    "6. DURATION — athlete's gym_duration_minutes / run_duration_minutes are their "
+    "6. COACHING CONTEXT — If coaching_context is provided, treat "
+    "latest_sunday_review.readiness_score and next_week_adjustments as HIGH "
+    "PRIORITY. readiness_score <= 4: prefer lighter templates and more "
+    "remove_exercises. readiness_score >= 8: can program harder templates. "
+    "journal_notes_last_7_days reveal fatigue, OMAD effects, pain — adjust "
+    "template selection and modifications accordingly.\n"
+    "7. DURATION — athlete's gym_duration_minutes / run_duration_minutes are their "
     "time windows; mention preferred times in each day's focus.\n"
-    "7. Write coach_summary (2-4 sentences) and each day's focus (one sentence) "
+    "8. Write coach_summary (2-4 sentences) and each day's focus (one sentence) "
     "in TURKISH.\n"
     "Output: STRICT JSON matching the response schema. No exercise lists — only "
     "template_id selections and optional modifications."
@@ -274,6 +281,7 @@ async def _generate_structured(
 
 async def generate_onboarding_plan(
     db: AsyncSession,
+    user_id: str,
     payload: OnboardingPayload,
     catalog: list[dict],
 ) -> GeneratedWeekPlan:
@@ -292,12 +300,15 @@ async def generate_onboarding_plan(
         {"id": item["id"], "name": item["name"], "category": item["category"]}
         for item in catalog
     ]
+    coaching_context = await build_plan_coaching_context(db, user_id)
 
     ai_selection = await _generate_structured(
         system_instruction=PLAN_SYSTEM_INSTRUCTION,
         contents=(
             "Athlete profile:\n"
             + payload.model_dump_json(indent=2)
+            + "\n\nCoaching context (Sunday review + journal notes + metrics):\n"
+            + json.dumps(coaching_context, ensure_ascii=False, indent=2)
             + "\n\nAvailable Templates (select template_id from this list ONLY):\n"
             + json.dumps(available_templates, ensure_ascii=False, indent=2)
             + "\n\nExercise catalog (for modifications.add/remove exercise_id only):\n"

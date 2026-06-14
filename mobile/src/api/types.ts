@@ -88,6 +88,9 @@ export interface WorkoutCreate {
   user_reported_rpe: number;
   journal_notes?: string | null;
   duration_minutes: number;
+  /** Harcanan enerji (kcal); opsiyonel, manuel girilir. */
+  calories_burned?: number | null;
+  /** ISO 8601; bos birakilirsa sunucu zamani kullanilir (gecmise donuk kayit icin doldurulur). */
   date?: string | null;
   exercises?: ExerciseLog[] | null;
   cardio?: CardioLog | null;
@@ -101,6 +104,7 @@ export interface WorkoutSummary {
   user_reported_rpe: number;
   total_strength_sets: number;
   cardio_distance_km: number | null;
+  calories_burned: number | null;
 }
 
 export interface MuscleWeeklyLoad {
@@ -150,6 +154,8 @@ export interface WorkoutHistoryItem {
   workout_type: string;
   user_reported_rpe: number;
   duration_minutes: number;
+  calories_burned: number | null;
+  journal_notes: string | null;
   exercises: ExerciseDetailOut[];
   cardio: CardioDetailOut[];
 }
@@ -212,6 +218,19 @@ export interface SundayReviewResponse {
   review_summary: string;
   next_week_adjustments: string;
   readiness_score: number;
+}
+
+export interface SundayReviewRecord extends SundayReviewResponse {
+  review_id: string;
+  missed_workouts_reason: string;
+  nutrition_adherence: number;
+  recovery_feeling: string;
+  created_at: string;
+}
+
+export interface SundayReviewStatusResponse {
+  completed_this_week: boolean;
+  latest: SundayReviewRecord | null;
 }
 
 // ---------------------------------------------------------------

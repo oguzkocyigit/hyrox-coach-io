@@ -137,7 +137,7 @@ async def generate_plan(
     catalog = await plan_service.fetch_exercise_catalog(db)
 
     try:
-        plan = await generate_onboarding_plan(db, payload, catalog)
+        plan = await generate_onboarding_plan(db, current_user.user_id, payload, catalog)
     except AIServiceNotConfiguredError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except ValidationError as exc:

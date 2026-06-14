@@ -96,6 +96,7 @@ async def log_workout(
         user_reported_rpe=payload.user_reported_rpe,
         total_strength_sets=sum(len(e.sets) for e in payload.exercises or []),
         cardio_distance_km=payload.cardio.distance_km if payload.cardio else None,
+        calories_burned=payload.calories_burned,
     )
 
     return WorkoutCreateResponse(

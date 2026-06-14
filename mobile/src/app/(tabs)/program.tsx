@@ -21,6 +21,7 @@ import {
   useDeleteEntry,
   useScheduleEntry,
   useSetEntryCompletion,
+  useSundayReviewStatus,
   useUpdateTemplate,
   useWeekPlan,
 } from "@/api/hooks";
@@ -79,6 +80,7 @@ export default function ProgramScreen() {
   const weekStartIso = toIsoDate(weekStart);
 
   const { data: plan, isLoading, refetch, isRefetching } = useWeekPlan(weekStartIso);
+  const { data: reviewStatus } = useSundayReviewStatus();
   const setCompletion = useSetEntryCompletion();
   const deleteEntry = useDeleteEntry();
 
@@ -113,6 +115,8 @@ export default function ProgramScreen() {
   const currentWeekStartIso = toIsoDate(mondayOf(new Date()));
   const isCurrentWeek = weekStartIso === currentWeekStartIso;
   const isSunday = new Date().getDay() === 0;
+  const needsSundayReview =
+    isCurrentWeek && reviewStatus !== undefined && !reviewStatus.completed_this_week;
   const completedCount = (plan?.entries ?? []).filter((e) => e.completed_at).length;
   const totalCount = plan?.entries.length ?? 0;
 
@@ -257,6 +261,7 @@ export default function ProgramScreen() {
           style={({ pressed }) => [
             styles.sundayReviewCard,
             isSunday && styles.sundayReviewCardHighlight,
+            needsSundayReview && styles.sundayReviewCardPending,
             pressed && styles.sundayReviewCardPressed,
           ]}
           accessibilityLabel="Pazar degerlendirme sihirbazi"
@@ -265,11 +270,20 @@ export default function ProgramScreen() {
             <Ionicons name="sparkles" size={18} color={color.accent.ink} />
           </View>
           <View style={styles.sundayReviewTexts}>
-            <Text style={styles.sundayReviewTitle}>Pazar Degerlendirmesi</Text>
+            <View style={styles.sundayReviewTitleRow}>
+              <Text style={styles.sundayReviewTitle}>Pazar Degerlendirmesi</Text>
+              {needsSundayReview ? (
+                <View style={styles.sundayReviewBadge}>
+                  <Text style={styles.sundayReviewBadgeText}>Bekliyor</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={styles.sundayReviewMeta}>
-              {totalCount > 0
-                ? `${completedCount}/${totalCount} idman · AI haftalik koc ozeti`
-                : "Haftalik notlarin ve toparlanman icin AI koc degerlendirmesi"}
+              {reviewStatus?.completed_this_week
+                ? "Bu haftaki degerlendirme tamamlandi"
+                : totalCount > 0
+                  ? `${completedCount}/${totalCount} idman · AI haftalik koc ozeti`
+                  : "Haftalik notlarin ve toparlanman icin AI koc degerlendirmesi"}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={color.text.secondary} />
@@ -572,6 +586,9 @@ const styles = StyleSheet.create({
     borderColor: color.accent.primary,
     backgroundColor: color.accent.subtle,
   },
+  sundayReviewCardPending: {
+    borderColor: color.accent.primary,
+  },
   sundayReviewCardPressed: {
     opacity: 0.85,
   },
@@ -587,9 +604,26 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+  sundayReviewTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.sm,
+    flexWrap: "wrap",
+  },
   sundayReviewTitle: {
     ...type.bodyStrong,
     color: color.text.primary,
+  },
+  sundayReviewBadge: {
+    backgroundColor: color.accent.primary,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.sm,
+    paddingVertical: 2,
+  },
+  sundayReviewBadgeText: {
+    ...type.micro,
+    color: color.accent.ink,
+    fontWeight: "700",
   },
   sundayReviewMeta: {
     ...type.small,

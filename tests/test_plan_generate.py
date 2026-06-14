@@ -75,7 +75,7 @@ def _mock_plan() -> GeneratedWeekPlan:
 
 
 def _patch_gemini(monkeypatch):
-    async def _fake(_db, _payload, _catalog):
+    async def _fake(_db, _user_id, _payload, _catalog):
         return _mock_plan()
 
     monkeypatch.setattr(

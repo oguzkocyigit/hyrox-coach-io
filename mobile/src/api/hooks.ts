@@ -25,7 +25,9 @@ import type {
   PlanEntry,
   PlanEntryCreate,
   SundayReviewPayload,
+  SundayReviewRecord,
   SundayReviewResponse,
+  SundayReviewStatusResponse,
   UserProfile,
   UserProfileUpdate,
   WeekPlanResponse,
@@ -124,9 +126,21 @@ export function useWeeklyAnalysis() {
 }
 
 export function useSundayReview() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: SundayReviewPayload) =>
-      api.post<SundayReviewResponse>("/api/v1/analysis/sunday-review", payload),
+      api.post<SundayReviewRecord>("/api/v1/analysis/sunday-review", payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sunday-review-status"] });
+    },
+  });
+}
+
+export function useSundayReviewStatus() {
+  return useQuery({
+    queryKey: ["sunday-review-status"],
+    queryFn: () =>
+      api.get<SundayReviewStatusResponse>("/api/v1/analysis/sunday-review/status"),
   });
 }
 

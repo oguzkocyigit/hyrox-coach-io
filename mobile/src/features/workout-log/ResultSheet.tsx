@@ -32,6 +32,12 @@ export function ResultSheet({ result, onClose }: ResultSheetProps) {
             <View>
               <Text style={styles.label}>IDMAN KAYDEDILDI · GUNLUK CNS SKORU</Text>
               <Text style={styles.score}>{result.daily_cns_score.toFixed(2)}</Text>
+              <Text style={styles.meta}>
+                {result.summary.duration_minutes} dk
+                {result.summary.calories_burned != null
+                  ? ` · ${result.summary.calories_burned} kcal`
+                  : ""}
+              </Text>
             </View>
 
             {result.warning_flag ? (
@@ -92,6 +98,11 @@ const styles = StyleSheet.create({
   score: {
     ...type.displayLg,
     color: color.text.primary,
+    marginTop: space.xs,
+  },
+  meta: {
+    ...type.small,
+    color: color.text.secondary,
     marginTop: space.xs,
   },
   barsSection: {

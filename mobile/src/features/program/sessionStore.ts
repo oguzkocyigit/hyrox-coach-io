@@ -21,6 +21,16 @@ export type PersistedSession = {
   overallRpe: number | null;
   /** Idman sonrasi serbest metin gunluk (max 1500 karakter). */
   journalNotes: string;
+  /** Harcanan kalori girisi (kcal, string); opsiyonel. */
+  calories?: string;
+  /** Saatleri elle gir modu aktif mi (timer yerine baslangic/bitis saati). */
+  useManualTime?: boolean;
+  /** Manuel mod: secilen gun (ISO, gece yarisi). */
+  manualDateISO?: string | null;
+  /** Manuel mod: baslangic dakikasi (gece yarisindan). */
+  manualStartMin?: number | null;
+  /** Manuel mod: bitis dakikasi (gece yarisindan). */
+  manualEndMin?: number | null;
   showFinishPanel: boolean;
   savedAt: number;
 };

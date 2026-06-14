@@ -49,6 +49,13 @@ import {
 } from "@/features/program/sessionStore";
 import { ResultSheet } from "@/features/workout-log/ResultSheet";
 import { ExercisePicker } from "@/features/workout-log/ExercisePicker";
+import { WhenField } from "@/features/workout-log/WhenField";
+import {
+  resolveWhen,
+  startOfDay,
+  todayWhen,
+  type WhenState,
+} from "@/features/workout-log/when";
 import { Button } from "@/ui/Button";
 import { color, font, radius, space, type } from "@/ui/tokens";
 
@@ -96,6 +103,9 @@ export function WorkoutSessionSheet({
   const [overallRpe, setOverallRpe] = useState<number | null>(null);
   const [journalNotes, setJournalNotes] = useState("");
   const [journalFocused, setJournalFocused] = useState(false);
+  const [calories, setCalories] = useState("");
+  const [useManualTime, setUseManualTime] = useState(false);
+  const [manualWhen, setManualWhen] = useState<WhenState>(todayWhen);
   const [showFinishPanel, setShowFinishPanel] = useState(false);
   const [result, setResult] = useState<WorkoutCreateResponse | null>(null);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -132,6 +142,13 @@ export function WorkoutSessionSheet({
         setCurrentRound(saved.currentRound);
         setOverallRpe(parsePersistedRpe(saved.overallRpe));
         setJournalNotes(saved.journalNotes ?? "");
+        setCalories(saved.calories ?? "");
+        setUseManualTime(saved.useManualTime ?? false);
+        setManualWhen({
+          date: saved.manualDateISO ? startOfDay(new Date(saved.manualDateISO)) : startOfDay(new Date()),
+          startMin: saved.manualStartMin ?? null,
+          endMin: saved.manualEndMin ?? null,
+        });
         setShowFinishPanel(saved.showFinishPanel);
         return;
       }
@@ -143,6 +160,9 @@ export function WorkoutSessionSheet({
       setEditingIndex(null);
       setOverallRpe(null);
       setJournalNotes("");
+      setCalories("");
+      setUseManualTime(false);
+      setManualWhen(todayWhen());
       setShowFinishPanel(false);
       startedAtRef.current = null;
       accumulatedRef.current = 0;
@@ -178,6 +198,11 @@ export function WorkoutSessionSheet({
       logs,
       overallRpe,
       journalNotes,
+      calories,
+      useManualTime,
+      manualDateISO: startOfDay(manualWhen.date).toISOString(),
+      manualStartMin: manualWhen.startMin,
+      manualEndMin: manualWhen.endMin,
       showFinishPanel,
       savedAt: Date.now(),
     });
@@ -191,6 +216,9 @@ export function WorkoutSessionSheet({
     logs,
     overallRpe,
     journalNotes,
+    calories,
+    useManualTime,
+    manualWhen,
     showFinishPanel,
   ]);
 
@@ -248,6 +276,14 @@ export function WorkoutSessionSheet({
     setShowFinishPanel(true);
   };
 
+  // Sabah baslatmayi unutmus olabilir: timer'i hic baslatmadan dogrudan
+  // kayit paneline gecip baslangic/bitis saatini elle girer.
+  const handleManualEntry = () => {
+    setUseManualTime(true);
+    setStatus("finished");
+    setShowFinishPanel(true);
+  };
+
   const updateSetLog = (
     exerciseIndex: number,
     setIndex: number,
@@ -281,11 +317,34 @@ export function WorkoutSessionSheet({
   };
 
   const submitWorkout = async () => {
-    const durationMinutes = Math.max(1, elapsedSeconds / 60);
-
     if (overallRpe !== null && (overallRpe < 1 || overallRpe > 10)) {
       Alert.alert("Hata", "Genel RPE 1-10 arasi olmali.");
       return;
+    }
+
+    const resolved = resolveWhen(manualWhen);
+    let durationMinutes = Math.max(1, elapsedSeconds / 60);
+    let dateISO: string | null = null;
+
+    if (useManualTime) {
+      dateISO = resolved.dateISO;
+      if (resolved.durationMinutes != null) {
+        // Baslangic + bitis saati girildiyse sureyi oradan al.
+        durationMinutes = resolved.durationMinutes;
+      } else if (elapsedSeconds < 1) {
+        // Hizli (gecmise donuk) kayit: sure zorunlu degil, sablon tahmininden turet.
+        durationMinutes = estimateDurationMinutes(template);
+      }
+    }
+
+    let caloriesBurned: number | null = null;
+    if (calories.trim() !== "") {
+      const c = Number(calories.trim().replace(",", "."));
+      if (!Number.isFinite(c) || c < 0 || c > 20000) {
+        Alert.alert("Hata", "Kalori 0-20000 arasi olmali (kcal).");
+        return;
+      }
+      caloriesBurned = Math.round(c);
     }
 
     const built = buildSessionPayload({
@@ -294,6 +353,8 @@ export function WorkoutSessionSheet({
       durationMinutes,
       overallRpe,
       journalNotes,
+      caloriesBurned,
+      dateISO,
     });
     if (!built.ok) {
       Alert.alert("Hata", built.message);
@@ -349,17 +410,27 @@ export function WorkoutSessionSheet({
             </View>
 
             <View style={styles.controlRow}>
-              {status === "idle" ? <Button label="Baslat" onPress={handleStart} /> : null}
+              {status === "idle" ? (
+                <>
+                  <ControlButton icon="play" label="Baslat" tone="primary" onPress={handleStart} />
+                  <ControlButton
+                    icon="flash"
+                    label="Hizli Tamamla"
+                    tone="neutral"
+                    onPress={handleManualEntry}
+                  />
+                </>
+              ) : null}
               {status === "running" ? (
                 <>
-                  <Button label="Duraklat" variant="secondary" onPress={handlePause} />
-                  <Button label="Sonlandir" onPress={handleFinishPress} />
+                  <ControlButton icon="pause" label="Duraklat" tone="neutral" onPress={handlePause} />
+                  <ControlButton icon="stop" label="Sonlandir" tone="primary" onPress={handleFinishPress} />
                 </>
               ) : null}
               {status === "paused" ? (
                 <>
-                  <Button label="Devam" onPress={handleResume} />
-                  <Button label="Sonlandir" onPress={handleFinishPress} />
+                  <ControlButton icon="play" label="Devam" tone="primary" onPress={handleResume} />
+                  <ControlButton icon="stop" label="Sonlandir" tone="neutral" onPress={handleFinishPress} />
                 </>
               ) : null}
             </View>
@@ -437,6 +508,35 @@ export function WorkoutSessionSheet({
             {showFinishPanel ? (
               <View style={styles.finishPanel}>
                 <Text style={styles.sectionLabel}>IDMANI KAYDET</Text>
+
+                {useManualTime ? (
+                  <View style={styles.finishFieldGroup}>
+                    <WhenField value={manualWhen} onChange={setManualWhen} />
+                  </View>
+                ) : (
+                  <Pressable
+                    style={styles.manualToggle}
+                    onPress={() => setUseManualTime(true)}
+                  >
+                    <Ionicons name="time-outline" size={16} color={color.accent.primary} />
+                    <Text style={styles.manualToggleText}>
+                      Saati/tarihi elle gir (baslatmayi unuttuysan)
+                    </Text>
+                  </Pressable>
+                )}
+
+                <View style={styles.finishFieldGroup}>
+                  <Text style={styles.finishFieldLabel}>KALORI (KCAL) — OPSIYONEL</Text>
+                  <TextInput
+                    style={styles.caloriesInput}
+                    value={calories}
+                    onChangeText={setCalories}
+                    keyboardType="number-pad"
+                    placeholder="450"
+                    placeholderTextColor={color.text.disabled}
+                    accessibilityLabel="Harcanan kalori"
+                  />
+                </View>
 
                 <View style={styles.finishFieldGroup}>
                   <Text style={styles.finishFieldLabel}>IDMAN GENELI RPE</Text>
@@ -547,11 +647,14 @@ export function WorkoutSessionSheet({
                 />
 
                 <View style={styles.logActions}>
-                  <Button
-                    label="Iptal"
-                    variant="secondary"
-                    onPress={() => setEditingIndex(null)}
-                  />
+                  <View style={styles.logActionItem}>
+                    <Button
+                      label="Iptal"
+                      variant="secondary"
+                      onPress={() => setEditingIndex(null)}
+                    />
+                  </View>
+                  <View style={styles.logActionItem}>
                   <Button
                     label="Tamamlandi"
                     onPress={() => {
@@ -581,6 +684,7 @@ export function WorkoutSessionSheet({
                       setEditingIndex(null);
                     }}
                   />
+                  </View>
                 </View>
               </View>
             </View>
@@ -617,6 +721,38 @@ export function WorkoutSessionSheet({
         }}
       />
     </>
+  );
+}
+
+type ControlButtonProps = {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  tone: "primary" | "neutral";
+  onPress: () => void;
+};
+
+function ControlButton({ icon, label, tone, onPress }: ControlButtonProps) {
+  const primary = tone === "primary";
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => [
+        styles.control,
+        primary ? styles.controlPrimary : styles.controlNeutral,
+        pressed && styles.controlPressed,
+      ]}
+    >
+      <Ionicons
+        name={icon}
+        size={18}
+        color={primary ? color.accent.ink : color.text.primary}
+      />
+      <Text style={[styles.controlText, primary ? styles.controlTextPrimary : styles.controlTextNeutral]}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -664,7 +800,38 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   controlRow: {
+    flexDirection: "row",
     gap: space.sm,
+  },
+  control: {
+    flex: 1,
+    height: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space.sm,
+    borderRadius: radius.md,
+  },
+  controlPrimary: {
+    backgroundColor: color.accent.primary,
+  },
+  controlNeutral: {
+    backgroundColor: color.bg.surface,
+    borderWidth: 1,
+    borderColor: color.stroke.strong,
+  },
+  controlPressed: {
+    opacity: 0.85,
+  },
+  controlText: {
+    fontFamily: font.body.semibold,
+    fontSize: 15,
+  },
+  controlTextPrimary: {
+    color: color.accent.ink,
+  },
+  controlTextNeutral: {
+    color: color.text.primary,
   },
   badges: {
     flexDirection: "row",
@@ -768,6 +935,25 @@ const styles = StyleSheet.create({
   },
   finishFieldGroup: {
     gap: space.sm,
+  },
+  manualToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: space.xs,
+  },
+  manualToggleText: {
+    ...type.small,
+    color: color.accent.primary,
+  },
+  caloriesInput: {
+    backgroundColor: color.bg.elevated,
+    borderWidth: 1,
+    borderColor: color.stroke.strong,
+    borderRadius: radius.md,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
+    color: color.text.primary,
+    ...type.body,
   },
   finishFieldLabel: {
     ...type.micro,
@@ -874,6 +1060,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: space.sm,
     marginTop: space.md,
+  },
+  logActionItem: {
+    flex: 1,
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFill,

@@ -32,9 +32,11 @@ async def save_workout(
         text(
             """
             INSERT INTO workout_logs
-                (user_id, date, workout_type, user_reported_rpe, journal_notes, duration_minutes)
+                (user_id, date, workout_type, user_reported_rpe, journal_notes,
+                 duration_minutes, calories_burned)
             VALUES
-                (:user_id, COALESCE(:date, now()), :workout_type, :rpe, :journal_notes, :duration)
+                (:user_id, COALESCE(:date, now()), :workout_type, :rpe, :journal_notes,
+                 :duration, :calories)
             RETURNING workout_log_id, date
             """
         ),
@@ -45,6 +47,7 @@ async def save_workout(
             "rpe": workout.user_reported_rpe,
             "journal_notes": workout.journal_notes,
             "duration": workout.duration_minutes,
+            "calories": workout.calories_burned,
         },
     )
     row = result.one()
@@ -118,6 +121,8 @@ async def fetch_workout_history(
                    w.workout_type,
                    w.user_reported_rpe,
                    w.duration_minutes,
+                   w.calories_burned,
+                   w.journal_notes,
                    COALESCE(
                        (SELECT json_agg(json_build_object(
                                    'exercise_id', d.exercise_id,
@@ -157,6 +162,8 @@ async def fetch_workout_history(
             workout_type=row.workout_type,
             user_reported_rpe=row.user_reported_rpe,
             duration_minutes=row.duration_minutes,
+            calories_burned=row.calories_burned,
+            journal_notes=row.journal_notes,
             exercises=_ensure_parsed(row.exercises),
             cardio=_ensure_parsed(row.cardio),
         )

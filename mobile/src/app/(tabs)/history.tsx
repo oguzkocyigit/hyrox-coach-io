@@ -87,6 +87,9 @@ function WorkoutCard({ item }: { item: WorkoutHistoryItem }) {
       <View style={styles.metaRow}>
         <Text style={styles.metaItem}>{item.duration_minutes} DK</Text>
         <Text style={styles.metaItem}>RPE {item.user_reported_rpe.toFixed(1)}</Text>
+        {item.calories_burned != null ? (
+          <Text style={styles.metaItem}>{item.calories_burned} KCAL</Text>
+        ) : null}
         {totalSets > 0 ? <Text style={styles.metaItem}>{totalSets} SET</Text> : null}
         {cardioDistance > 0 ? (
           <Text style={styles.metaItem}>{cardioDistance.toFixed(1)} KM</Text>
@@ -95,6 +98,12 @@ function WorkoutCard({ item }: { item: WorkoutHistoryItem }) {
 
       {expanded ? (
         <View style={styles.details}>
+          {item.journal_notes ? (
+            <View style={styles.journalBlock}>
+              <Text style={styles.journalLabel}>Gunluk notu</Text>
+              <Text style={styles.journalText}>{item.journal_notes}</Text>
+            </View>
+          ) : null}
           {item.exercises.map((exercise) => (
             <View key={exercise.exercise_id} style={styles.detailBlock}>
               <Text style={styles.detailName}>{exercise.exercise_name}</Text>
@@ -258,6 +267,21 @@ const styles = StyleSheet.create({
     borderTopColor: color.stroke.subtle,
     paddingTop: space.md,
     gap: space.md,
+  },
+  journalBlock: {
+    gap: space.xs,
+    backgroundColor: color.bg.elevated,
+    borderRadius: radius.sm,
+    padding: space.md,
+  },
+  journalLabel: {
+    ...type.micro,
+    color: color.text.secondary,
+  },
+  journalText: {
+    ...type.small,
+    color: color.text.primary,
+    lineHeight: 20,
   },
   detailBlock: {
     gap: space.xs,
